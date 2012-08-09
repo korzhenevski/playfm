@@ -12,14 +12,6 @@ from gevent_zeromq import zmq
 from gevent.queue import Queue
 from bson.objectid import ObjectId
 
-logger = logging.getLogger()
-
-class Stream(object):
-    def __init__(self, object_id):
-        self.object_id = object_id
-        self.heartbeat_at = None
-        self.job_id = None
-
 class Manager(object):
     def __init__(self, endpoint_config, track_factory, db):
         self.endpoint_config = endpoint_config
@@ -33,16 +25,18 @@ class Manager(object):
         self.redis = redis.Redis()
         self.track_factory = track_factory
 
-    def find_stream(self, stream_id):
-        return self.db.streams.find_one({'_id': ObjectId(stream_id)})
-
     def subscribe_to_cometfm_firehose(self):
+        logging.info('subscribe to cometfm firehose')
         self.cometfm_firehose = self.context.socket(zmq.SUB)
         self.cometfm_firehose.setsockopt(zmq.SUBSCRIBE, 'STATE')
         self.cometfm_firehose.connect(self.endpoint_config['cometfm_firehose'])
+        logging.debug('cometfm firehose endpoint: %s', self.endpoint_config['cometfm_firehose'])
         while True:
-            topic, channel, is_active = self.cometfm_firehose.recv_multipart()
-            print '%s %s %s' % (topic, channel, is_active)
+            payload = self.cometfm_firehose.recv_multipart()
+            if len(payload) != 3:
+                continue
+            topic, channel, is_active = payload
+            logging.debug('cometfm received message: %s', payload)
             station_id, stream_id = channel.split('_')
             if is_active == '1':
                 self.put_stream(stream_id, channel)
@@ -51,33 +45,39 @@ class Manager(object):
                 #self.remove_stream(stream_id)
 
     def remove_stream(self, stream_id):
-        print 'remove stream %s' % stream_id
-        if stream_id in self.streams:
-            stream = self.streams[stream_id]
-            if stream['job_id']:
-                self.cancel_job(stream['job_id'])
-            self.streams.pop(stream_id)
-            self.queue.remove(stream_id)
+        if stream_id not in self.streams:
+            return
+        logging.info('remove stream %s', stream_id)
+        stream = self.streams[stream_id]
+        if stream['job_id']:
+            self.cancel_job(stream['job_id'])
+        self.streams.pop(stream_id)
+        self.queue.remove(stream_id)
 
     def put_stream(self, stream_id, channel):
-        print 'put stream %s' % stream_id
-        if stream_id not in self.streams:
-            self.streams[stream_id] = {
-                'id': stream_id,
-                'hearbeat_at': None,
-                'job_id': None,
-                'channel': channel,
-            }
-            self.queue.add(stream_id)
+        if stream_id in self.streams:
+            return
+        logging.info('put stream %s', stream_id)
+        self.streams[stream_id] = {
+            'id': stream_id,
+            'hearbeat_at': None,
+            'job_id': None,
+            'channel': channel,
+        }
+        self.queue.add(stream_id)
 
     def cancel_job(self, job_id):
-        print 'cancel job %s' % job_id
-        if job_id in self.jobs:
-            stream_id = self.jobs.pop(job_id)
-            self.streams[stream_id].update({
-                'hearbeat_at': None,
-                'job_id': None
-            })
+        if job_id not in self.jobs:
+            return
+        logging.debug('cancel job %s', job_id)
+        stream_id = self.jobs.pop(job_id)
+        self.streams[stream_id].update({
+            'hearbeat_at': None,
+            'job_id': None
+        })
+
+    def find_stream(self, stream_id):
+        return self.db.streams.find_one({'_id': ObjectId(stream_id)})
 
     def get_job_for_worker(self, worker_id):
         if not self.queue:
