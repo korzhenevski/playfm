@@ -12,8 +12,8 @@ from gevent_zeromq import zmq
 from gevent.queue import Queue
 from bson.objectid import ObjectId
 
-class Manager(object):
-    def __init__(self, endpoint_config, track_factory, db):
+class ManagerServer(object):
+    def __init__(self, endpoint_config, track_factory, db, redis):
         self.endpoint_config = endpoint_config
         self.context = zmq.Context()
         self.db = db
@@ -22,7 +22,7 @@ class Manager(object):
         self.queue = set()
         self.job_id = 0
         self.tf_queue = Queue()
-        self.redis = redis.Redis()
+        self.redis = redis
         self.track_factory = track_factory
 
     def subscribe_to_cometfm_firehose(self):
@@ -178,15 +178,3 @@ class Manager(object):
         #    onair.pop('title')
         self.redis.hmset('channel:%s' % channel, onair)
 
-def main():
-    import config
-    from trackfactory import TrackFactory
-    track_factory = TrackFactory(lastfm_url=config.lastfm_url, lastfm_api_key=config.lastfm_api_key)
-    #print track_factory.build_track_from_stream_title("StreamTitle='Joy Kitikonti - Joy don't stop (freaky mix)'")
-    #return
-    db = pymongo.Connection(host=config.mongodb['host'])[config.mongodb['database']]
-    manager = Manager(endpoint_config=config.endpoint, track_factory=track_factory, db=db)
-    manager.run()
-
-if __name__ == '__main__':
-    main()
