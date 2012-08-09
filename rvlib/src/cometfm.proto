@@ -1,0 +1,10 @@
+message RequestUpdate {
+	required string channel = 1;
+}
+
+message StreamStatus {
+	enum Status { ONLINE = 1; OFFLINE = 2; }
+	required Status status = 1;
+	required string channel = 2;
+}
+

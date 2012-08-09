@@ -2,19 +2,18 @@
 
 import gevent
 import json
-from gevent.monkey import patch_all
-patch_all()
 import pymongo
-import redis
 import logging
 from pprint import pprint
 from gevent_zeromq import zmq
 from gevent.queue import Queue
 from bson.objectid import ObjectId
+from rvlib import pb_safe_parse, WorkerRequest, ManagerResponse, StreamStatus, Job, JobEvent, JobEventResponse
+from binascii import hexlify
 
 class ManagerServer(object):
     def __init__(self, endpoint_config, track_factory, db, redis):
-        self.endpoint_config = endpoint_config
+        self.endpoint = endpoint_config
         self.context = zmq.Context()
         self.db = db
         self.streams = {}
@@ -26,23 +25,24 @@ class ManagerServer(object):
         self.track_factory = track_factory
 
     def subscribe_to_cometfm_firehose(self):
-        logging.info('subscribe to cometfm firehose')
+        logging.info('waiting for cometfm status updates...')
+
         self.cometfm_firehose = self.context.socket(zmq.SUB)
         self.cometfm_firehose.setsockopt(zmq.SUBSCRIBE, 'STATE')
-        self.cometfm_firehose.connect(self.endpoint_config['cometfm_firehose'])
-        logging.debug('cometfm firehose endpoint: %s', self.endpoint_config['cometfm_firehose'])
+        self.cometfm_firehose.connect(self.endpoint['cometfm_firehose'])
+
+        logging.debug('cometfm firehose endpoint: %s', self.endpoint['cometfm_firehose'])
+
         while True:
-            payload = self.cometfm_firehose.recv_multipart()
-            if len(payload) != 3:
+            stream_status = pb_safe_parse(StreamStatus, self.cometfm_firehose.recv())
+            if not stream_status:
+                logging.error('broken stream status message')
                 continue
-            topic, channel, is_active = payload
-            logging.debug('cometfm received message: %s', payload)
-            station_id, stream_id = channel.split('_')
-            if is_active == '1':
-                self.put_stream(stream_id, channel)
-            else:
-                pass
-                #self.remove_stream(stream_id)
+
+            station_id, stream_id = stream_status.channel.split('_')
+            if stream_status.status == StreamStatus.ONLINE:
+                self.put_stream(stream_id, stream_status.channel)
+
 
     def remove_stream(self, stream_id):
         if stream_id not in self.streams:
@@ -105,57 +105,75 @@ class ManagerServer(object):
         ])
 
     def job_router(self):
+        logging.info('job router started...')
+
         sock = self.context.socket(zmq.ROUTER)
-        sock.bind(self.endpoint_config['worker_manager'])
+        sock.bind(self.endpoint['worker_manager'])
+
+        logging.debug('worker manager endpoint: %s', self.endpoint['worker_manager'])
         while True:
-            worker_id, cmd, payload = self.recv_request(sock)
-            print cmd
-            if cmd == 'ready':
+            worker_id, payload = self.recv_request(sock)
+            logging.debug('message from worker %s', hexlify(worker_id))
+            request = pb_safe_parse(WorkerRequest, payload)
+            if not request:
+                logging.error('broken worker request message')
+                continue
+
+            if request.type == WorkerRequest.READY:
+                response = ManagerResponse()
                 job = self.get_job_for_worker(worker_id)
                 if job:
-                    job = json.dumps(job)
-                    sock.send_multipart([worker_id, '', 'job', job])
+                    response.status = ManagerResponse.JOB
+                    response.job.id = job['id']
+                    response.job.url = job['url']
+                    logging.info('job %s for worker %s', job['id'], hexlify(worker_id))
                 else:
-                    sock.send_multipart([worker_id, '', 'wait', ''])
-            else:
-                print 'invalid cmd'
-            gevent.sleep(0)
+                    response.status = ManagerResponse.WAIT
+
+                logging.debug('worker %s manager response - %s', hexlify(worker_id), response)
+                sock.send_multipart([worker_id, '', response.SerializeToString()])
+
+            gevent.sleep()
 
     def recv_request(self, sock):
         request = sock.recv_multipart()
-        worker_id = request[0]
-        payload = request[2:]
-        cmd = payload[0]
-        return worker_id, cmd, payload
+        # skip envelope empty frame
+        return request[0], request[2:]
 
     def worker_event_receiver(self):
-        sock = self.context.socket(zmq.ROUTER)
-        sock.bind(self.endpoint_config['worker_events'])
-        while True:
-            worker_id, cmd, payload = self.recv_request(sock)
-            if cmd != 'job_status':
-                print 'invalid event_recv cmd'
-                continue
-            status = json.loads(payload[2])
-            if self.process_job_status(payload[1], status_type=status['type'], data=status['data']):
-                reply = '200'
-            else:
-                reply = '404'
-            sock.send_multipart([worker_id, '', reply])
-            gevent.sleep(0)
+        logging.info('manager wait for worker events...')
 
-    def process_job_status(self, job_id, status_type, data):
-        print 'got job %s, %s: %s' % (job_id, status_type, data)
-        if job_id not in self.jobs:
+        sock = self.context.socket(zmq.ROUTER)
+        sock.bind(self.endpoint['worker_events'])
+        logging.info('worker events endpoint: %s', self.endpoint['worker_events'])
+
+        while True:
+            worker_id, payload = self.recv_request(sock)
+            job_event = pb_safe_parse(JobEvent, payload)
+            if not job_event:
+                logging.error('broken job event')
+
+            response = JobEventResponse()
+            if self.process_job_event(job_event):
+                response.status = JobEventResponse.OK
+            else:
+                response.status = JobEventResponse.JOB_GONE
+
+            logging.debug('worker %s job event response - %s', hexlify(worker_id), response)
+            sock.send_multipart([worker_id, '', response.SerializeToString()])
+            gevent.sleep()
+
+    def process_job_event(self, event):
+        if event.job_id not in self.jobs:
             return False
-        if status_type == 'meta':
-            channel = self.streams[self.jobs[job_id]]['channel']
-            self.tf_queue.put((channel, unicode(data)))
+        if event.type == JobEvent.META:
+            channel = self.streams[self.jobs[event.job_id]]['channel']
+            self.tf_queue.put((channel, unicode(event.meta)))
         return True
 
     def track_factory_processor(self):
         sock = self.context.socket(zmq.PUB)
-        sock.bind(self.endpoint_config['cometfm_events'])
+        sock.bind(self.endpoint['cometfm_events'])
         # wait for subs connect
         gevent.sleep(1)
         for channel, rawmeta in self.tf_queue:

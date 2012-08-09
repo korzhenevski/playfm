@@ -1,0 +1,28 @@
+message Job {
+	required int32 id = 1;
+	required string url = 2;
+}
+
+message ManagerResponse {
+	enum Status { JOB = 1; WAIT = 2; }
+	required Status status = 1;
+	optional Job job = 2;
+}
+
+message WorkerRequest {
+	enum Type { READY = 1; }
+	required Type type = 1;
+}
+
+message JobEvent {
+	enum Type { HEARTBEAT = 1; ERROR = 2; META = 3; }
+	required int32 job_id = 1;
+	required Type type = 2;
+	optional string error = 3;
+	optional string meta = 4;
+}
+
+message JobEventResponse {
+	enum Status { OK = 1; JOB_GONE = 2; }
+	required Status status = 1;
+}
