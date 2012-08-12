@@ -26,3 +26,25 @@ message JobEventResponse {
 	enum Status { OK = 1; JOB_GONE = 2; }
 	required Status status = 1;
 }
+
+message Track {
+	required int32 id = 1;
+	required string title = 2;
+	optional string artist = 3;
+	optional string name = 4;
+	optional string image_url = 5;
+}
+
+message OnairUpdate {
+	required int32 station_id = 1;
+	required int32 stream_id = 2;
+	required Track track = 3;
+}
+
+message StreamStatus {
+	enum Status { ONLINE = 1; OFFLINE = 2; }
+	required Status status = 1;
+	required int32 station_id = 2;
+	required int32 stream_id = 3;
+}
+

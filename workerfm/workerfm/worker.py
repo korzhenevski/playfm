@@ -9,9 +9,9 @@ from workerfm.radio import Radio
 from rvlib import WorkerRequest, ManagerResponse, JobEvent, JobEventResponse, pb_safe_parse
 
 class Worker(object):
-    def __init__(self, endpoint, threads):
+    def __init__(self, endpoint, maxjobs):
         self.events = Queue()
-        self.thread_pool = Pool(size=threads)
+        self.thread_pool = Pool(size=maxjobs)
         self.jobs = {}
         self.context = zmq.Context()
         self.endpoint = endpoint
@@ -33,7 +33,7 @@ class Worker(object):
             self.thread_pool.wait_available()
 
             request = WorkerRequest()
-            request.status = WorkerRequest.READY
+            request.type = WorkerRequest.READY
             self.manager_socket.send(request.SerializeToString())
 
             manager_response = pb_safe_parse(ManagerResponse, self.manager_socket.recv())
@@ -41,7 +41,7 @@ class Worker(object):
                 logging.error('broken manager response')
                 continue
 
-            logging.debug('manager response - %s', manager_response)
+            logging.debug('manager response - %s', str(manager_response).strip())
 
             if manager_response.status == ManagerResponse.JOB:
                 job = manager_response.job
@@ -87,20 +87,20 @@ class Worker(object):
         event.job_id = job_id
         event.type = JobEvent.ERROR
         event.error = error
-        self.events.put([job_id, event])
+        self.events.put(event)
 
     def job_heartbeat(self, job_id):
         event = JobEvent()
         event.job_id = job_id
         event.type = JobEvent.HEARTBEAT
-        self.events.put([job_id, event])
+        self.events.put(event)
 
     def job_meta(self, job_id, meta):
         event = JobEvent()
         event.job_id = job_id
         event.type = JobEvent.META
         event.meta = meta
-        self.events.put([job_id, event])
+        self.events.put(event)
 
 
 class WorkerThread(object):

@@ -9,6 +9,7 @@ setup(
     install_requires=[
         'gevent==0.13.7',
         'gevent-zeromq==0.2.5',
+	'rvlib==0.9.2',
     ],
     zip_safe=False,
     entry_points={

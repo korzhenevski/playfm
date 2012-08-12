@@ -11,6 +11,7 @@ setup(
         'gevent-zeromq==0.2.5',
         'pymongo==2.2.1',
         'redis==2.6.0',
+	'rvlib==0.9.2',
     ],
     zip_safe=False,
     entry_points={

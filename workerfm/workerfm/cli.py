@@ -4,7 +4,7 @@ import argparse
 from ConfigParser import ConfigParser
 from gevent.monkey import patch_all
 patch_all()
-from workerfm.worker import Worker
+from .worker import Worker
 import logging
 
 def main():
@@ -19,12 +19,14 @@ def main():
     config.read(args.config_file)
 
     # ajust logger level
+    loglevel = logging.ERROR
     if args.loginfo:
-        logging.basicConfig(level=logging.INFO)
+        loglevel = logging.INFO
     if args.logdebug:
-        logging.basicConfig(level=logging.DEBUG)
+        loglevel = logging.DEBUG
+    logging.basicConfig(level=loglevel, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
     worker = Worker(endpoint=dict(config.items('endpoint')),
-                    threads=config.getint('threads'))
+                    maxjobs=config.getint('worker', 'maxjobs'))
     worker.run()
 

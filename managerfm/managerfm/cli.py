@@ -1,13 +1,13 @@
-import logging
-import argparse
 from gevent.monkey import patch_all
 patch_all()
 
+import logging
+import argparse
 import pymongo
 from ConfigParser import ConfigParser
 from redis import Redis
-from managerfm.trackfactory import TrackFactory
-from managerfm.server import ManagerServer
+from .trackfactory import TrackFactory
+from .server import ManagerServer
 
 def main():
     parser = argparse.ArgumentParser(description='Radio platform manager')
@@ -20,10 +20,12 @@ def main():
     config.read(args.config_file)
 
     # ajust logger level
+    loglevel = logging.ERROR
     if args.loginfo:
-        logging.basicConfig(level=logging.INFO)
+        loglevel = logging.INFO
     if args.logdebug:
-        logging.basicConfig(level=logging.DEBUG)
+        loglevel = logging.DEBUG
+    logging.basicConfig(level=loglevel, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
     db = pymongo.Connection(host=config.get('mongodb', 'host'))[config.get('mongodb', 'database')]
     redis = Redis(host=config.get('redis', 'host'), db=config.getint('redis', 'database'))

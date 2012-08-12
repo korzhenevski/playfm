@@ -9,9 +9,9 @@ from google.protobuf import descriptor_pb2
 
 
 DESCRIPTOR = descriptor.FileDescriptor(
-  name='rv.proto',
+  name='rvlib.proto',
   package='',
-  serialized_pb='\n\x08rv.proto\"\x1e\n\x03Job\x12\n\n\x02id\x18\x01 \x02(\x05\x12\x0b\n\x03url\x18\x02 \x02(\t\"j\n\x0fManagerResponse\x12\'\n\x06status\x18\x01 \x02(\x0e\x32\x17.ManagerResponse.Status\x12\x11\n\x03job\x18\x02 \x01(\x0b\x32\x04.Job\"\x1b\n\x06Status\x12\x08\n\x04WAIT\x10\x01\x12\x07\n\x03JOB\x10\x02\"E\n\rWorkerRequest\x12!\n\x04type\x18\x01 \x02(\x0e\x32\x13.WorkerRequest.Type\"\x11\n\x04Type\x12\t\n\x05READY\x10\x01\"\x81\x01\n\x08JobEvent\x12\x0e\n\x06job_id\x18\x01 \x02(\x05\x12\x1c\n\x04type\x18\x02 \x02(\x0e\x32\x0e.JobEvent.Type\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x12\x0c\n\x04meta\x18\x04 \x01(\t\"*\n\x04Type\x12\r\n\tHEARTBEAT\x10\x01\x12\t\n\x05\x45RROR\x10\x02\x12\x08\n\x04META\x10\x03\"\\\n\x10JobEventResponse\x12(\n\x06status\x18\x01 \x02(\x0e\x32\x18.JobEventResponse.Status\"\x1e\n\x06Status\x12\x06\n\x02OK\x10\x01\x12\x0c\n\x08JOB_GONE\x10\x02')
+  serialized_pb='\n\x0brvlib.proto\"\x1e\n\x03Job\x12\n\n\x02id\x18\x01 \x02(\x05\x12\x0b\n\x03url\x18\x02 \x02(\t\"j\n\x0fManagerResponse\x12\'\n\x06status\x18\x01 \x02(\x0e\x32\x17.ManagerResponse.Status\x12\x11\n\x03job\x18\x02 \x01(\x0b\x32\x04.Job\"\x1b\n\x06Status\x12\x07\n\x03JOB\x10\x01\x12\x08\n\x04WAIT\x10\x02\"E\n\rWorkerRequest\x12!\n\x04type\x18\x01 \x02(\x0e\x32\x13.WorkerRequest.Type\"\x11\n\x04Type\x12\t\n\x05READY\x10\x01\"\x81\x01\n\x08JobEvent\x12\x0e\n\x06job_id\x18\x01 \x02(\x05\x12\x1c\n\x04type\x18\x02 \x02(\x0e\x32\x0e.JobEvent.Type\x12\r\n\x05\x65rror\x18\x03 \x01(\t\x12\x0c\n\x04meta\x18\x04 \x01(\t\"*\n\x04Type\x12\r\n\tHEARTBEAT\x10\x01\x12\t\n\x05\x45RROR\x10\x02\x12\x08\n\x04META\x10\x03\"\\\n\x10JobEventResponse\x12(\n\x06status\x18\x01 \x02(\x0e\x32\x18.JobEventResponse.Status\"\x1e\n\x06Status\x12\x06\n\x02OK\x10\x01\x12\x0c\n\x08JOB_GONE\x10\x02\"S\n\x05Track\x12\n\n\x02id\x18\x01 \x02(\x05\x12\r\n\x05title\x18\x02 \x02(\t\x12\x0e\n\x06\x61rtist\x18\x03 \x01(\t\x12\x0c\n\x04name\x18\x04 \x01(\t\x12\x11\n\timage_url\x18\x05 \x01(\t\"K\n\x0bOnairUpdate\x12\x12\n\nstation_id\x18\x01 \x02(\x05\x12\x11\n\tstream_id\x18\x02 \x02(\x05\x12\x15\n\x05track\x18\x03 \x02(\x0b\x32\x06.Track\"~\n\x0cStreamStatus\x12$\n\x06status\x18\x01 \x02(\x0e\x32\x14.StreamStatus.Status\x12\x12\n\nstation_id\x18\x02 \x02(\x05\x12\x11\n\tstream_id\x18\x03 \x02(\x05\"!\n\x06Status\x12\n\n\x06ONLINE\x10\x01\x12\x0b\n\x07OFFLINE\x10\x02')
 
 
 
@@ -22,18 +22,18 @@ _MANAGERRESPONSE_STATUS = descriptor.EnumDescriptor(
   file=DESCRIPTOR,
   values=[
     descriptor.EnumValueDescriptor(
-      name='WAIT', index=0, number=1,
+      name='JOB', index=0, number=1,
       options=None,
       type=None),
     descriptor.EnumValueDescriptor(
-      name='JOB', index=1, number=2,
+      name='WAIT', index=1, number=2,
       options=None,
       type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=123,
-  serialized_end=150,
+  serialized_start=126,
+  serialized_end=153,
 )
 
 _WORKERREQUEST_TYPE = descriptor.EnumDescriptor(
@@ -49,8 +49,8 @@ _WORKERREQUEST_TYPE = descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=204,
-  serialized_end=221,
+  serialized_start=207,
+  serialized_end=224,
 )
 
 _JOBEVENT_TYPE = descriptor.EnumDescriptor(
@@ -74,8 +74,8 @@ _JOBEVENT_TYPE = descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=311,
-  serialized_end=353,
+  serialized_start=314,
+  serialized_end=356,
 )
 
 _JOBEVENTRESPONSE_STATUS = descriptor.EnumDescriptor(
@@ -95,8 +95,29 @@ _JOBEVENTRESPONSE_STATUS = descriptor.EnumDescriptor(
   ],
   containing_type=None,
   options=None,
-  serialized_start=417,
-  serialized_end=447,
+  serialized_start=420,
+  serialized_end=450,
+)
+
+_STREAMSTATUS_STATUS = descriptor.EnumDescriptor(
+  name='Status',
+  full_name='StreamStatus.Status',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    descriptor.EnumValueDescriptor(
+      name='ONLINE', index=0, number=1,
+      options=None,
+      type=None),
+    descriptor.EnumValueDescriptor(
+      name='OFFLINE', index=1, number=2,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=707,
+  serialized_end=740,
 )
 
 
@@ -130,8 +151,8 @@ _JOB = descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=12,
-  serialized_end=42,
+  serialized_start=15,
+  serialized_end=45,
 )
 
 
@@ -166,8 +187,8 @@ _MANAGERRESPONSE = descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=44,
-  serialized_end=150,
+  serialized_start=47,
+  serialized_end=153,
 )
 
 
@@ -195,8 +216,8 @@ _WORKERREQUEST = descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=152,
-  serialized_end=221,
+  serialized_start=155,
+  serialized_end=224,
 )
 
 
@@ -245,8 +266,8 @@ _JOBEVENT = descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=224,
-  serialized_end=353,
+  serialized_start=227,
+  serialized_end=356,
 )
 
 
@@ -274,8 +295,149 @@ _JOBEVENTRESPONSE = descriptor.Descriptor(
   options=None,
   is_extendable=False,
   extension_ranges=[],
-  serialized_start=355,
-  serialized_end=447,
+  serialized_start=358,
+  serialized_end=450,
+)
+
+
+_TRACK = descriptor.Descriptor(
+  name='Track',
+  full_name='Track',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    descriptor.FieldDescriptor(
+      name='id', full_name='Track.id', index=0,
+      number=1, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='title', full_name='Track.title', index=1,
+      number=2, type=9, cpp_type=9, label=2,
+      has_default_value=False, default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='artist', full_name='Track.artist', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='name', full_name='Track.name', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='image_url', full_name='Track.image_url', index=4,
+      number=5, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=unicode("", "utf-8"),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  extension_ranges=[],
+  serialized_start=452,
+  serialized_end=535,
+)
+
+
+_ONAIRUPDATE = descriptor.Descriptor(
+  name='OnairUpdate',
+  full_name='OnairUpdate',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    descriptor.FieldDescriptor(
+      name='station_id', full_name='OnairUpdate.station_id', index=0,
+      number=1, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='stream_id', full_name='OnairUpdate.stream_id', index=1,
+      number=2, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='track', full_name='OnairUpdate.track', index=2,
+      number=3, type=11, cpp_type=10, label=2,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  options=None,
+  is_extendable=False,
+  extension_ranges=[],
+  serialized_start=537,
+  serialized_end=612,
+)
+
+
+_STREAMSTATUS = descriptor.Descriptor(
+  name='StreamStatus',
+  full_name='StreamStatus',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    descriptor.FieldDescriptor(
+      name='status', full_name='StreamStatus.status', index=0,
+      number=1, type=14, cpp_type=8, label=2,
+      has_default_value=False, default_value=1,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='station_id', full_name='StreamStatus.station_id', index=1,
+      number=2, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    descriptor.FieldDescriptor(
+      name='stream_id', full_name='StreamStatus.stream_id', index=2,
+      number=3, type=5, cpp_type=1, label=2,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+    _STREAMSTATUS_STATUS,
+  ],
+  options=None,
+  is_extendable=False,
+  extension_ranges=[],
+  serialized_start=614,
+  serialized_end=740,
 )
 
 _MANAGERRESPONSE.fields_by_name['status'].enum_type = _MANAGERRESPONSE_STATUS
@@ -287,11 +449,17 @@ _JOBEVENT.fields_by_name['type'].enum_type = _JOBEVENT_TYPE
 _JOBEVENT_TYPE.containing_type = _JOBEVENT;
 _JOBEVENTRESPONSE.fields_by_name['status'].enum_type = _JOBEVENTRESPONSE_STATUS
 _JOBEVENTRESPONSE_STATUS.containing_type = _JOBEVENTRESPONSE;
+_ONAIRUPDATE.fields_by_name['track'].message_type = _TRACK
+_STREAMSTATUS.fields_by_name['status'].enum_type = _STREAMSTATUS_STATUS
+_STREAMSTATUS_STATUS.containing_type = _STREAMSTATUS;
 DESCRIPTOR.message_types_by_name['Job'] = _JOB
 DESCRIPTOR.message_types_by_name['ManagerResponse'] = _MANAGERRESPONSE
 DESCRIPTOR.message_types_by_name['WorkerRequest'] = _WORKERREQUEST
 DESCRIPTOR.message_types_by_name['JobEvent'] = _JOBEVENT
 DESCRIPTOR.message_types_by_name['JobEventResponse'] = _JOBEVENTRESPONSE
+DESCRIPTOR.message_types_by_name['Track'] = _TRACK
+DESCRIPTOR.message_types_by_name['OnairUpdate'] = _ONAIRUPDATE
+DESCRIPTOR.message_types_by_name['StreamStatus'] = _STREAMSTATUS
 
 class Job(message.Message):
   __metaclass__ = reflection.GeneratedProtocolMessageType
@@ -322,5 +490,23 @@ class JobEventResponse(message.Message):
   DESCRIPTOR = _JOBEVENTRESPONSE
   
   # @@protoc_insertion_point(class_scope:JobEventResponse)
+
+class Track(message.Message):
+  __metaclass__ = reflection.GeneratedProtocolMessageType
+  DESCRIPTOR = _TRACK
+  
+  # @@protoc_insertion_point(class_scope:Track)
+
+class OnairUpdate(message.Message):
+  __metaclass__ = reflection.GeneratedProtocolMessageType
+  DESCRIPTOR = _ONAIRUPDATE
+  
+  # @@protoc_insertion_point(class_scope:OnairUpdate)
+
+class StreamStatus(message.Message):
+  __metaclass__ = reflection.GeneratedProtocolMessageType
+  DESCRIPTOR = _STREAMSTATUS
+  
+  # @@protoc_insertion_point(class_scope:StreamStatus)
 
 # @@protoc_insertion_point(module_scope)
