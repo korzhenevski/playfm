@@ -30,5 +30,24 @@ message WorkerTelemetry {
   repeated Job jobs;
 }
               
+менеджер хранит состояние в файле.
+снепшот уходит раз в 5 сек при налиции изменений
+
+message ManagerStream {
+  required int32 id = 1;
+  required int32 station_id = 2;
+  enum State {
+    PERSISTENT = 1;
+    ONDEMAND = 2;
+  }
+  required State state = 3 [default=ONDEMAND];
+  optional int32 record_id;
+  
+  record_id выставляется из-вне
+  запросом recordStream(stream_id, station_id, record_id)
+}
+
+таким образом, после рестарта, менеджер всегда знает что ему делать с потоками
+
 
 RadioVoice Platform ™
