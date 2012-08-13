@@ -49,5 +49,11 @@ message ManagerStream {
 
 таким образом, после рестарта, менеджер всегда знает что ему делать с потоками
 
+ещё при сохранении трека, надо делать find, и отдельно в stream_title записывать (stream_id, station_id, track_id)
+локальный кеш хранит stream_title -> track_id
+если нет, ищем в tracks
+если и там нет, делаем track_build
+после пишем в stream_title и сохраняем в кеш
+отдельный кеш против дублей
 
 RadioVoice Platform ™
