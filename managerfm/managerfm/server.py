@@ -9,6 +9,7 @@ from rvlib import pb_safe_parse, WorkerRequest, ManagerResponse,\
 from binascii import hexlify
 from time import time
 from zlib import crc32
+from datetime import datetime
 
 class ManagerServer(object):
     def __init__(self, endpoint_config, track_factory, db, redis):
@@ -23,6 +24,7 @@ class ManagerServer(object):
         self.redis = redis
         self.track_factory = track_factory
         self.track_cache = {}
+        self.job_heartbeat = {}
 
     def watch_cometfm_firehose(self):
         logging.info('waiting for cometfm status updates...')
@@ -49,7 +51,6 @@ class ManagerServer(object):
         logging.info('put stream %s', stream_id)
         self.streams[stream_id] = {
             'id': stream_id,
-            'hearbeat_at': None,
             'station_id': station_id,
             'job_id': None,
         }
@@ -90,18 +91,18 @@ class ManagerServer(object):
         self.job_id += 1
         job_id = self.job_id
         self.jobs[job_id] = stream_id
-        return {
-            'id': job_id,
-            'url': stream['url'],
-        }
+        
+        job = Job()
+        job.id = job_id
+        job.url = stream['url']
+        
+        return job
 
     def run(self):
         gevent.joinall([
             gevent.spawn(self.dispatch_jobs),
             gevent.spawn(self.process_worker_events),
             gevent.spawn(self.watch_cometfm_firehose),
-            gevent.spawn(self.process_stream_meta),
-            gevent.spawn(self.process_stream_meta),
             gevent.spawn(self.process_stream_meta),
         ])
 
@@ -125,8 +126,7 @@ class ManagerServer(object):
                 job = self.get_job_for_worker(worker_id)
                 if job:
                     response.status = ManagerResponse.JOB
-                    response.job.id = job['id']
-                    response.job.url = job['url']
+                    response.job.MergeFrom(job)
                     logging.info('job %s for worker %s', job['id'], hexlify(worker_id))
                 else:
                     response.status = ManagerResponse.WAIT
@@ -170,13 +170,9 @@ class ManagerServer(object):
         stream_id = self.jobs[event.job_id]
         if event.type == JobEvent.META:
             stream = self.streams[stream_id]
-            self.stream_meta_queue.put({
-                'stream_id': stream['id'],
-                'station_id': stream['station_id'],
-                'meta': event.meta
-            })
+            self.stream_meta_queue.put((stream['id'], stream['station_id'], event.meta))
         if event.type == JobEvent.HEARTBEAT:
-            self.streams[stream_id]['hearbeat_at'] = time()
+            self.job_heartbeat[event.job_id] = time()
         if event.type == JobEvent.ERROR:
             logging.warning('Job error: %s', event.error)
         return True
@@ -187,14 +183,14 @@ class ManagerServer(object):
         # wait for subscribers connect
         gevent.sleep(1)
 
-        for request in self.stream_meta_queue:
-            stream_title = self.track_factory.parse_stream_title(request['meta'])
+        for stream_id, station_id, meta in self.stream_meta_queue:
+            stream_title = self.track_factory.parse_stream_title(meta)
             if not stream_title:
                 continue
 
             # воркер присылает сырую мету, кешируем повторения
             cache_hash = crc32(stream_title) & 0xffffffff
-            if self.track_cache.get(request['stream_id']) == cache_hash:
+            if self.track_cache.get(stream_id) == cache_hash:
                continue
 
             logging.debug('stream title: "%s"', stream_title)
@@ -206,11 +202,19 @@ class ManagerServer(object):
                 {'_id': 'tracks'}, {'$inc': {'next': 1}},
                 new=True, upsert=True)['next']
             self.db.tracks.insert(track)
-            self.track_cache[request['stream_id']] = cache_hash
+            self.track_cache[stream_id] = cache_hash
+            
+            self.db.onair_history.insert({
+                'stream_id': stream_id,
+                'station_id': station_id,
+                'track_id': track['id'],
+                'ts': datetime.now(),
+            })
 
             update = OnairUpdate()
-            update.stream_id = request['stream_id']
-            update.station_id = request['station_id']
+            update.stream_id = stream_id
+            update.station_id = station_id
             for field in ('id', 'title', 'artist', 'name', 'image_url'):
                 setattr(update.track, field, track.get(field))
+                
             cometfm.send(update.SerializeToString())
