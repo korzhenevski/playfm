@@ -5,8 +5,8 @@ import gevent
 from gevent.queue import Queue
 from gevent.pool import Pool
 from gevent_zeromq import zmq
-from workerfm.radio import Radio
-from rvlib import WorkerRequest, ManagerResponse, JobEvent, JobEventResponse, pb_safe_parse
+from workerfm.radio import Radio, RadioReadError
+from rvlib import pb_safe_parse, pb_dump, WorkerRequest, ManagerResponse, JobEvent, JobEventResponse
 
 class Worker(object):
     def __init__(self, endpoint, maxjobs):
@@ -41,13 +41,13 @@ class Worker(object):
                 logging.error('broken manager response')
                 continue
 
-            logging.debug('manager response - %s', str(manager_response).strip())
-
+            #logging.debug('manager response - %s', str(manager_response).strip())
             if manager_response.status == ManagerResponse.JOB:
                 job = manager_response.job
-                worker_thread = WorkerThread(job.id, url=job.url, parent=self)
-                logging.info('spawn job %s: %s', job.id, job.url)
-                self.jobs[job.id] = self.thread_pool.spawn(worker_thread.run)
+                worker_thread = WorkerThread(job.id, url=job.url, manager=self)
+                worker_thread.greenlet = self.thread_pool.spawn(worker_thread.run)
+                self.jobs[job.id] = worker_thread
+                logging.info('job %s: %s', job.id, job.url)
                 logging.debug('thread pool free count: %s', self.thread_pool.free_count())
 
             if manager_response.status == ManagerResponse.WAIT:
@@ -63,7 +63,7 @@ class Worker(object):
         logging.info('wait for thread events...')
 
         for event in self.events:
-            logging.debug('event - %s', event)
+            logging.debug('event - %s', pb_dump(event))
             if event.job_id not in self.jobs:
                 logging.debug('event dropped')
                 continue
@@ -75,10 +75,15 @@ class Worker(object):
                 continue
 
             if event_response.status == JobEventResponse.JOB_GONE:
-                logging.info('manager report that job %s is gone, kill thread.', event.job_id)
+                logging.info('job %s gone, kill thread.', event.job_id)
                 # TODO: нужна-ли эта проверка?
-                if event.job_id in self.jobs:
-                    self.jobs[event.job_id].kill()
+                #if event.job_id in self.jobs:
+                try:
+                    thread = self.jobs[event.job_id]
+                    thread.stop()
+                    self.thread_pool.killone(thread.greenlet)
+                except Exception as exc:
+                    logging.error('error while stoping thread: %s', exc)
             else:
                 logging.debug('event sent ok')
 
@@ -102,43 +107,61 @@ class Worker(object):
         event.meta = meta
         self.events.put(event)
 
-
 class WorkerThread(object):
-    def __init__(self, job_id, url, parent):
+    def __init__(self, job_id, url, manager):
         self.job_id = job_id
         self.url = url
-        self.parent = parent
+        self.manager = manager
         self.error = None
         self.meta = None
 
     def run(self):
+        self.running = True
         gevent.joinall([
             gevent.spawn(self.listen),
             gevent.spawn(self.heatbeat)
         ])
 
+    def stop(self):
+        self.running = False
+        self.radio.disconnect()
+
     def listen(self, default_timeout=2, max_timeout=10):
-        radio = Radio(self.url)
+        self.radio = Radio(self.url)
         timeout = default_timeout
-        while True:
+        while self.running:
             self.error = None
             self.meta = None
             try:
-                radio.connect()
+                self.radio.connect()
                 # reset after success connect
                 timeout = default_timeout
-                for meta in radio.stream_meta():
-                    self.parent.job_meta(self.job_id, meta)
+                for meta in self.radio.stream_meta():
+                    self.manager.job_meta(self.job_id, meta)
             except Exception as exc:
-                self.parent.job_error(self.job_id, str(exc))
+                # skip socket error while disconnect
+                if isinstance(exc, RadioReadError) and not self.running:
+                    continue
+                self.manager.job_error(self.job_id, str(exc))
                 # incremental timeout
                 if timeout > max_timeout:
                     timeout = max_timeout
                 else:
                     timeout = int(timeout * 1.5)
                 gevent.sleep(timeout)
+        self.radio.disconnect()
 
     def heatbeat(self):
-        while True:
-            self.parent.job_heartbeat(self.job_id)
+        while self.running:
+            self.manager.job_heartbeat(self.job_id)
             gevent.sleep(5)
+
+class MockManager(object):
+    def job_heartbeat(self, job_id):
+        print 'job %s hb' % job_id
+
+    def job_error(self, job_id, error):
+        print 'job %s error: %s' % (job_id, error)
+
+    def job_meta(self, job_id, meta):
+        print 'job %s meta: %s' % (job_id, meta)

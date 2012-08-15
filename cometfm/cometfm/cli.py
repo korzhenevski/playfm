@@ -5,11 +5,8 @@ monkey.patch_all()
 from gevent.wsgi import WSGIServer
 
 import os
-import sys
-import argparse
 import signal
 import logging
-from ConfigParser import ConfigParser
 from redis import Redis
 from .cometfm import Server
 from .app import app
@@ -23,7 +20,7 @@ def main():
     app.cometfm.run()
 
     address = (config.get('server', 'host'), config.getint('server', 'port'))
-    server = WSGIServer(address, app)
+    server = WSGIServer(address, app, log=None)
 
     def shutdown():
         logging.warning('shutdown server')

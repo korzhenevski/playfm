@@ -3,6 +3,9 @@
 import socket
 from urlparse import urlparse, urljoin
 
+class RadioReadError(Exception):
+    pass
+
 class Radio(object):
     def __init__(self, url):
         self.url = urlparse(url)
@@ -39,7 +42,7 @@ class Radio(object):
         # первый чанк данных читаем за вычетом уже прочитанного тела
         chunk_size = self.metaint - len(self.body_rest)
         self.body_rest = ''
-        while True:
+        while self.stream:
             self.read_stream(chunk_size)
             size = ord(self.read_stream(1)) * 16
             if size:
@@ -62,6 +65,8 @@ class Radio(object):
     def read_stream(self, amt):
         s = []
         while amt > 0:
+            if not self.stream:
+                raise RadioReadError('error while reading')
             chunk = self.stream.recv(min(amt, 1024 * 1024))
             if not chunk:
                 break
@@ -86,10 +91,13 @@ class Radio(object):
             raise RuntimeError('invalid metaint')
 
     def _parse_headers(self):
-        data = ''
-        while '\r\n\r\n' not in data:
-            data += self.read_stream(512)
-        data = data.split('\r\n\r\n')
+        self.status_code = 0
+        data = self.read_stream(1024)
+        if not data:
+            return
+        data = data.split('\r\n\r\n', 1)
+        if not len(data) == 2:
+            return
         headers, self.body_rest = data
         headers = headers.split('\r\n')
         self.status_code = int(headers[0].split(' ', 2)[1])
@@ -97,3 +105,8 @@ class Radio(object):
         # lowercase/strip keys and values
         self.headers = dict([(name.strip().lower(), val.strip()) for name, val in headers])
 
+    def disconnect(self):
+        if self.stream:
+            self.stream.shutdown(1)
+            self.stream.close()
+            self.stream = None

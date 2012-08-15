@@ -42,9 +42,9 @@ message OnairUpdate {
 }
 
 message StreamStatus {
-	enum Status { ONLINE = 1; OFFLINE = 2; }
-	required Status status = 1;
+	enum Type { ONLINE = 1; OFFLINE = 2; TOUCH = 3; }
+	required Type type = 1;
 	required int32 station_id = 2;
 	required int32 stream_id = 3;
+	required int32 clients = 4;
 }
-

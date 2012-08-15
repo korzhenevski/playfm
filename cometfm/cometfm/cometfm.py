@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 
 import gevent
+import logging
 from gevent.event import Event as GeventEvent
 from gevent_zeromq import zmq
 from gevent.queue import Queue
 from time import time
 from rvlib import pb_safe_parse, pb_dump, OnairUpdate, StreamStatus
-import logging
 
 class Server(object):
+    OFFLINE_DEADLINE = 60
+
     def __init__(self, redis, endpoint):
         self.ctx = zmq.Context()
         self.channels = {}
@@ -24,11 +26,15 @@ class Server(object):
     def get_channel_name(self, station_id, stream_id):
         return '%s_%s' % (station_id, stream_id)
 
-    def event_set_state(self, channel, state):
-        status = StreamStatus()
+    def parse_channel(self, channel):
         channel = channel.split('_', 1)
-        status.station_id, status.stream_id = map(int, channel)
-        status.status = StreamStatus.ONLINE if state else StreamStatus.OFFLINE
+        return map(int, channel)
+
+    def event_set_state(self, channel, state, clients):
+        status = StreamStatus()
+        status.type = StreamStatus.ONLINE if state else StreamStatus.OFFLINE
+        status.station_id, status.stream_id = self.parse_channel(channel)
+        status.clients = clients
         self.firehose.put(status)
 
     def wakeup_channel(self, name):
@@ -38,8 +44,20 @@ class Server(object):
 
     def run(self):
         gevent.spawn(self.watch_onair_updates)
-        #gevent.spawn(self.activity_publisher)
+        gevent.spawn(self.activity_publisher)
+        gevent.spawn(self.cleanup_offline_channels)
         gevent.spawn(self.firehose_hydrant)
+
+    def cleanup_offline_channels(self):
+        while True:
+            current_time = time()
+            channels = set()
+            for channel, event in self.channels.iteritems():
+                if event.clients == 0 and current_time - event.last_online_at >= self.OFFLINE_DEADLINE:
+                    channels.add(channel)
+            for channel in channels:
+                self.channels.pop(channel)
+            gevent.sleep(60)
 
     def get_info(self, station_id, stream_id, user_id, timeout):
         channel = self.get_channel_name(station_id, stream_id)
@@ -84,40 +102,46 @@ class Server(object):
             self.redis.hmset('onair:%s' % channel, cache_track)
             self.wakeup_channel(channel)
 
+            gevent.sleep()
 
-    """
+
     def activity_publisher(self):
         while True:
             for channel, event in self.channels.iteritems():
-                self.firehose.put(['ACTIVITY', channel, str(event.waiters)])
-            gevent.sleep(60)
-    """
+                status = StreamStatus()
+                status.type = StreamStatus.TOUCH
+                status.station_id, status.stream_id = self.parse_channel(channel)
+                status.clients = event.clients
+                self.firehose.put(status)
+            gevent.sleep(10)
 
     def firehose_hydrant(self):
         sock = self.ctx.socket(zmq.PUB)
         sock.bind(self.endpoint['firehose'])
         for message in self.firehose:
             logging.debug('stream status - %s', pb_dump(message))
-            sock.send_multipart(['STATE', message.SerializeToString()])
+            sock.send_multipart(['STATUS', message.SerializeToString()])
 
 class Event(GeventEvent):
     def __init__(self, manager, channel, *args, **kwargs):
         super(Event, self).__init__(*args, **kwargs)
         self.manager = manager
         self.channel = channel
-        self.offline_at = None
+        self.last_online_at = time()
 
     def rawlink(self, *args, **kwargs):
         super(Event, self).rawlink(*args, **kwargs)
-        if self.waiters == 1:
-            self.manager.event_set_state(self.channel, True)
+        self.last_online_at = time()
+        if self.clients == 1:
+            self.manager.event_set_state(self.channel, state=True, clients=self.clients)
 
+    """
     def unlink(self, *args, **kwargs):
         super(Event, self).unlink(*args, **kwargs)
-        if not self.waiters:
-            self.manager.event_set_state(self.channel, False)
-            self.offline_at = time()
+        if not self.clients:
+            self.manager.event_set_state(self.channel, state=False, clients=self.clients)
+    """
 
     @property
-    def waiters(self):
+    def clients(self):
         return len(self._links)
