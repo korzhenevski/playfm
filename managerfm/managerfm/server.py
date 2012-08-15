@@ -15,6 +15,9 @@ from zlib import crc32
 from datetime import datetime
 from tempfile import NamedTemporaryFile
 
+def fasthash(data):
+    return crc32(data) & 0xffffffff
+
 class ManagerServer(object):
     SNAPSHOT_VERSION = 1
     HEARTBEAT_DEADLINE = 10
@@ -32,6 +35,7 @@ class ManagerServer(object):
         self.redis = redis
         self.track_factory = track_factory
         self.track_cache = {}
+        self.stream_title_cache = {}
         self.stream_meta = Queue()
         self.stream_job = {}
         self.offline_streams = {}
@@ -259,27 +263,34 @@ class ManagerServer(object):
                 continue
 
             # воркер присылает сырую мету, кешируем повторения
-            cache_hash = crc32(stream_title) & 0xffffffff
-            if self.track_cache.get(stream_id) == cache_hash:
+            title_hash = fasthash(stream_title)
+            if self.track_cache.get(stream_id) == title_hash:
                 continue
-
+            
+            self.track_cache[stream_id] = title_hash
+            
             logging.debug('stream title: "%s"', stream_title)
             track = self.track_factory.build_track(stream_title)
             if not track:
                 continue
 
-            track['id'] = self.db.object_ids.find_and_modify(
+            track['hash'] = fasthash(track['title'].lower())
+            exists_track = self.db.tracks.find_one({'hash': track['hash']})
+            if exists_track:
+                track = exists_track
+            else:
+                track['id'] = self.db.object_ids.find_and_modify(
                     {'_id': 'tracks'}, {'$inc': {'next': 1}},
-                new=True, upsert=True)['next']
-            self.db.tracks.insert(track)
-            self.track_cache[stream_id] = cache_hash
+                    new=True, upsert=True
+                )['next']
+                self.db.tracks.insert(track)
 
             self.db.onair_history.insert({
                 'stream_id': stream_id,
                 'station_id': station_id,
                 'track_id': track['id'],
                 'ts': datetime.now(),
-                })
+            })
 
             update = OnairUpdate()
             update.stream_id = stream_id
