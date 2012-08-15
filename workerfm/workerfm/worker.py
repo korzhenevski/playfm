@@ -75,7 +75,7 @@ class Worker(object):
                 continue
 
             if event_response.status == JobEventResponse.JOB_GONE:
-                logging.info('manager report that job %s is gone, kill thread.')
+                logging.info('manager report that job %s is gone, kill thread.', event.job_id)
                 # TODO: нужна-ли эта проверка?
                 if event.job_id in self.jobs:
                     self.jobs[event.job_id].kill()

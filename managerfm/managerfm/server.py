@@ -102,7 +102,7 @@ class ManagerServer(object):
         while True:
             gevent.sleep(30)
             snapshot = NamedTemporaryFile(prefix='mfm-snapshot-', delete=False)
-            for stream in self.streams:
+            for stream in self.streams.itervalues():
                 snapshot.file.write(json.dumps(stream) + '\n')
             snapshot.file.flush()
             os.fsync(snapshot.file.fileno())
