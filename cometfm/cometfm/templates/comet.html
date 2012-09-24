@@ -220,6 +220,10 @@ Comet_Loader = {
 			xhr.abort();  // abort() does not make bounce if this._lastXmlhttp is null
 		}
 		this.callback = callback;
+        if (!this.callback) {
+            // if unsubscribed
+            return;
+        }
 		this._callAndReturnException = callAndReturnException;
 		this._loopFunc();
 	},
