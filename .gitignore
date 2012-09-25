@@ -1,6 +1,8 @@
 *.py[co]
 .idea
 .env
+venv
+.vagrant
 
 # Packages
 *.egg
