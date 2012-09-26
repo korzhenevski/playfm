@@ -25,6 +25,8 @@ Vagrant::Config.run do |config|
 		chef.add_recipe "git"
 		chef.add_recipe "python"
 		chef.add_recipe "nginx"
+		chef.add_recipe "supervisor"
+		chef.add_recipe "playfm"
     
     chef.json = {
 	:vim => { extra_packages: ["vim-nox"] },
