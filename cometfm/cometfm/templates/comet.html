@@ -3,7 +3,7 @@
 <script language="JavaScript" type="text/javascript">
 Comet_Loader = {
 	// Maximum bounce count.
-	JS_MAX_BOUNCES: 10,
+	JS_MAX_BOUNCES: 5,
 	
 	// Reconnect delay.
 	JS_WAIT_RECONNECT_DELAY: 0.3,
@@ -186,7 +186,7 @@ Comet_Loader = {
             if (xmlhttp.status == 200) {
 			    th._onresponse("" + xmlhttp.responseText);
             } else {
-                throw 'http error' + xmlhttp.status
+                th._onresponse('');
             }
 			th = null;
 		}

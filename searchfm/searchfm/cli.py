@@ -1,25 +1,22 @@
 #!/usr/bin/env python
 import gevent
+import pymongo
 from gevent import monkey
-
 monkey.patch_all()
 from gevent.wsgi import WSGIServer
 
 import os
 import signal
 import logging
-from redis import Redis
-from .cometfm import Server
-from .app import app
+from .app import app, build_index_in_background
 from rvlib import cli_bootstrap
 
 def main():
-    config = cli_bootstrap(__name__, description='Comet server')
+    config = cli_bootstrap(__name__, description='Search server')
 
-    redis = Redis(host=config.get('redis', 'host'), db=config.getint('redis', 'database'))
-    app.cometfm = Server(redis=redis, endpoint=dict(config.items('endpoint')),
-        onair_ttl=config.getint('server', 'onair_ttl'))
-    app.cometfm.run()
+    db = pymongo.Connection(host=config.get('mongodb', 'host'))[config.get('mongodb', 'database')]
+
+    gevent.spawn(build_index_in_background, db[config.get('mongodb', 'collection')])
 
     address = (config.get('server', 'host'), config.getint('server', 'port'))
     server = WSGIServer(address, app, log=None)

@@ -11,11 +11,12 @@ from rvlib import pb_safe_parse, pb_dump, OnairUpdate, StreamStatus
 class Server(object):
     OFFLINE_DEADLINE = 60
 
-    def __init__(self, redis, endpoint):
+    def __init__(self, redis, endpoint, onair_ttl):
         self.ctx = zmq.Context()
         self.channels = {}
         self.redis = redis
         self.endpoint = endpoint
+        self.onair_ttl = onair_ttl
         self.firehose = Queue()
 
     def get_channel(self, name):
@@ -65,7 +66,8 @@ class Server(object):
             self.get_channel(channel).wait(timeout)
         data = self.redis.hgetall('onair:%s' % channel)
         if user_id and data.get('id'):
-            data['faved'] = self.redis.sismember('user:%s:favs' % user_id, data['id'])
+            favs = UserFavorites(user_id=user_id, redis=self.redis)
+            data['favorite'] = favs.exists('track', data['id'])
         return data
 
     def watch_onair_updates(self):
@@ -99,7 +101,9 @@ class Server(object):
             # cache trackinfo and notify comet clients
             logging.info('update onair channel %s', channel)
             cache_track = dict([(k, getattr(onair.track, k)) for k in ('id', 'title', 'artist', 'name', 'image_url')])
-            self.redis.hmset('onair:%s' % channel, cache_track)
+            onair_key = 'onair:%s' % channel
+            self.redis.hmset(onair_key, cache_track)
+            self.redis.expire(onair_key, self.onair_ttl)
             self.wakeup_channel(channel)
 
             gevent.sleep()
@@ -145,3 +149,32 @@ class Event(GeventEvent):
     @property
     def clients(self):
         return len(self._links)
+
+class UserFavorites(object):
+    def __init__(self, user_id, redis):
+        self.redis = redis
+        self.user_id = user_id
+
+    def add(self, object_type, object_id):
+        self.redis.zadd(self.object_key(object_type), object_id, self.get_ts())
+
+    def exists(self, object_type, object_id):
+        score = self.redis.zscore(self.object_key(object_type), object_id)
+        return bool(score)
+
+    def remove(self, object_type, object_id):
+        self.redis.zrem(self.object_key(object_type), object_id)
+
+    def toggle(self, object_type, object_id):
+        exists = self.exists(object_type, object_id)
+        if exists:
+            self.remove(object_type, object_id)
+        else:
+            self.add(object_type, object_id)
+        return not exists
+
+    def object_key(self, object_type):
+        return 'favorite_user_{}:{}'.format(object_type, self.user_id)
+
+    def get_ts(self):
+        return int(time.time())
