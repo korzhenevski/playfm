@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import gevent
 import logging
@@ -64,11 +65,15 @@ class Server(object):
         channel = self.get_channel_name(station_id, stream_id)
         if timeout is not None:
             self.get_channel(channel).wait(timeout)
-        data = self.redis.hgetall('onair:%s' % channel)
-        if user_id and data.get('id'):
-            favs = UserFavorites(user_id=user_id, redis=self.redis)
-            data['favorite'] = favs.exists('track', data['id'])
-        return data
+        info = self.redis.hgetall('onair:%s' % channel)
+        # проверка наличия трека в избранном у пользователя
+        #
+        # список избранного может быть сколько-угодно большим,
+        # лучше возвращать эту информацию отсюда
+        if user_id and info.get('id'):
+            cache_key = 'favorite_user_track:{}'.format(user_id)
+            info['favorite'] = bool(self.redis.zscore(cache_key, info['id']))
+        return info
 
     def watch_onair_updates(self):
         logging.info('subscribe to onair updates...')
@@ -149,32 +154,3 @@ class Event(GeventEvent):
     @property
     def clients(self):
         return len(self._links)
-
-class UserFavorites(object):
-    def __init__(self, user_id, redis):
-        self.redis = redis
-        self.user_id = user_id
-
-    def add(self, object_type, object_id):
-        self.redis.zadd(self.object_key(object_type), object_id, self.get_ts())
-
-    def exists(self, object_type, object_id):
-        score = self.redis.zscore(self.object_key(object_type), object_id)
-        return bool(score)
-
-    def remove(self, object_type, object_id):
-        self.redis.zrem(self.object_key(object_type), object_id)
-
-    def toggle(self, object_type, object_id):
-        exists = self.exists(object_type, object_id)
-        if exists:
-            self.remove(object_type, object_id)
-        else:
-            self.add(object_type, object_id)
-        return not exists
-
-    def object_key(self, object_type):
-        return 'favorite_user_{}:{}'.format(object_type, self.user_id)
-
-    def get_ts(self):
-        return int(time.time())

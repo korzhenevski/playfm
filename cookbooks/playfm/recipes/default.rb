@@ -33,7 +33,7 @@ directory "/var/log/playfm" do
   action :create
 end
 
-%w{checkfm managerfm workerfm cometfm}.each do |pkg|
+%w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
   execute "#{pkg} install" do
     command "cd /var/www/playfm/#{pkg};
             sudo python setup.py develop"
