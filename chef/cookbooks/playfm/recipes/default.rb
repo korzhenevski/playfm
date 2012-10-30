@@ -66,7 +66,7 @@ end
   end
 end
 
-template "#{node[:nginx][:dir]}/sites-available/cometfm.conf" do
+template "#{node[:nginx][:dir]}/sites-available/playfm.conf" do
   source "nginx.conf.erb"
   owner "root"
   group "root"
@@ -74,4 +74,4 @@ template "#{node[:nginx][:dir]}/sites-available/cometfm.conf" do
   notifies :reload, "service[nginx]"
 end
 
-nginx_site "cometfm.conf"
+nginx_site "playfm.conf"

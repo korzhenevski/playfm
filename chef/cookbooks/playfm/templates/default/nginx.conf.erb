@@ -1,5 +1,5 @@
 server {
-	server_name comet.again.fm comet.againfm.local;
+	server_name comet.again.fm search.testing.again.fm comet.againfm.local;
 	location / {
 		proxy_pass http://127.0.0.1:6000;
 		proxy_set_header Host $host;
@@ -7,7 +7,7 @@ server {
 }
 
 server {
-    server_name search.again.fm search.againfm.local;
+    server_name search.again.fm search.testing.again.fm search.againfm.local;
     location / {
 		proxy_pass http://127.0.0.1:6100;
 		proxy_set_header Host $host;
