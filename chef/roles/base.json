@@ -1,0 +1,19 @@
+{
+    "name": "base",
+    "default_attributes": {},
+    "override_attributes": {
+        "timezone": {"value": "Europe/Moscow"}
+    },
+    "json_class": "Chef::Role",
+    "description": "This is just a test role, no big deal.",
+    "chef_type": "role",
+    "run_list": [
+        "recipe[timezone]",
+        "recipe[build-essential]",
+        "recipe[apt]",
+        "recipe[python]",
+        "recipe[nginx]",
+        "recipe[supervisor]",
+        "recipe[playfm]"
+    ]
+}

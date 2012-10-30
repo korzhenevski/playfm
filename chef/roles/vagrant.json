@@ -1,0 +1,17 @@
+{
+    "name": "vagrant",
+    "default_attributes": {},
+    "override_attributes": {
+        "vim": {
+            "extra_packages": ["vim-nox"]
+        }
+    },
+    "json_class": "Chef::Role",
+    "description": "Vagrant Development Environment",
+    "chef_type": "role",
+    "run_list": [
+        "role[base]",
+        "recipe[git]",
+        "recipe[vim]"
+    ]
+}
