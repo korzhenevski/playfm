@@ -1,0 +1,15 @@
+[server]
+host = 127.0.0.1
+port = 6000
+; срок жизни трека в редисе
+onair_ttl = 3600
+
+[redis]
+host = <%= node['redis']['host'] %>
+database = <%= node['redis']['database'] %>
+
+[endpoint]
+firehose=tcp://127.0.0.1:22002
+; or events
+onair_updates=tcp://127.0.0.1:22001
+

@@ -1,0 +1,8 @@
+[server]
+host = 127.0.0.1
+port = 6100
+
+[mongodb]
+host = <%= node['mongodb']['host'] %>
+database = <%= node['mongodb']['database'] %>
+collection = stations

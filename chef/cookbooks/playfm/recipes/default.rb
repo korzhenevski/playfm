@@ -40,10 +40,24 @@ directory "/var/log/playfm" do
   action :create
 end
 
+directory "/var/www/playfm/conf" do
+  owner owner
+  group owner
+  mode 0755
+  action :create
+end
+
 %w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+  template "/var/www/playfm/conf/#{pkg}.conf" do
+    source "#{pkg}.conf.erb"
+    owner owner
+    group owner
+    mode 0644
+  end
+
   supervisor_service "#{pkg}" do
     action :enable
-    command "#{bin_path}/#{pkg}"
+    command "#{bin_path}/#{pkg} /var/www/playfm/conf/#{pkg}.conf"
     startretries 100000
     autorestart true
     redirect_stderr true
@@ -53,7 +67,7 @@ end
 end
 
 template "#{node[:nginx][:dir]}/sites-available/cometfm.conf" do
-  source "cometfm.conf.erb"
+  source "nginx.conf.erb"
   owner "root"
   group "root"
   mode 0644

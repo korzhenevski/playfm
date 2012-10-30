@@ -1,0 +1,20 @@
+[mongodb]
+host = <%= node['mongodb']['host'] %>
+database = <%= node['mongodb']['database'] %>
+
+[redis]
+host = <%= node['redis']['host'] %>
+database = <%= node['redis']['database'] %>
+
+[lastfm_api]
+url = http://lastfm-proxy01.again.fm/2.0/
+key = b25b959554ed76058ac220b7b2e0a026
+
+[endpoint]
+worker_manager = tcp://*:10050
+worker_events = tcp://127.0.0.1:22005
+cometfm_firehose = tcp://127.0.0.1:22002
+cometfm_events = tcp://127.0.0.1:22001
+
+[server]
+snapshot_file = /tmp/managerfm-snapshot

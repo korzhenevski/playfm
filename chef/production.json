@@ -1,3 +1,11 @@
 {
+    "mongodb": {
+        "host": "127.0.0.1",
+        "database": "againfm"
+    },
+    "redis": {
+        "host": "127.0.0.1",
+        "database": "0"
+    },
 	"run_list": "role[base]"
 }

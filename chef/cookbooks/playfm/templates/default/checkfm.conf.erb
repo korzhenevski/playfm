@@ -1,0 +1,13 @@
+[mongodb]
+host = <%= node['mongodb']['host'] %>
+database = <%= node['mongodb']['database'] %>
+
+[checker]
+; интервал проверки потоков
+interval = 60
+
+; поток выключается после нескольких неуспешных попыток
+retries = 5
+
+; таймаут ожидания потока
+timeout = 6
