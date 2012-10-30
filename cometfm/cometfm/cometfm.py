@@ -122,7 +122,7 @@ class Server(object):
                 status.station_id, status.stream_id = self.parse_channel(channel)
                 status.clients = event.clients
                 self.firehose.put(status)
-            gevent.sleep(10)
+            gevent.sleep(5)
 
     def firehose_hydrant(self):
         sock = self.ctx.socket(zmq.PUB)

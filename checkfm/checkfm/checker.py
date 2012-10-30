@@ -49,11 +49,12 @@ class Checker(object):
                     streams.update({'id': stream_id}, {'$set': {'is_online': False}})
             else:
                 logging.info('stream %d ok', stream_id)
-                streams.find_and_modify({'id': stream_id}, {
-                    '$set': {
+                streams.find_and_modify({'id': stream_id}, {'$set': {
                     'bitrate': result['bitrate'],
                     'is_shoutcast': result['is_shoutcast'],
                     'is_online': True,
+                    'check_error': '',
+                    'check_retries': 0,
                     'checked_at': checked_at
                 }})
 

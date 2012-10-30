@@ -55,7 +55,9 @@ class TrackFactory(object):
             if 'album' in lastfm_info:
                 album = lastfm_info['album']
                 if album.get('image'):
-                    track['image_url'] = album['image'][0].get('#text', '')
+                    image_url = album['image'][0].get('#text', '')
+                    if 'noimage' not in image_url:
+                        track['image_url'] = image_url
                     # tags aka "genres"
             if 'toptags' in lastfm_info and isinstance(lastfm_info['toptags'], dict):
                 tags = lastfm_info['toptags'].get('tag', ())
