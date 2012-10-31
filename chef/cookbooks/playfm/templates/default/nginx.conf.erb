@@ -4,6 +4,10 @@ server {
 		proxy_pass http://127.0.0.1:6000;
 		proxy_set_header Host $host;
 	}
+
+	location /mu-fa76d39d-fa0a0082-d8815605-c151db4b {
+        return 200 '42';
+	}
 }
 
 server {
