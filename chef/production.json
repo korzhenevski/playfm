@@ -1,7 +1,7 @@
 {
     "againfm": {
         "host": "production.again.fm",
-        "comet_host": "comet.again.fm"
+        "comet_host": "comet.production.again.fm"
     },
     "run_list": ["role[base]"]
 }
