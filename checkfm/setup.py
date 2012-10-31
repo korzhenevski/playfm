@@ -10,6 +10,7 @@ setup(
         'gevent==0.13.7',
         'pymongo==2.2.1',
         'redis==2.6.0',
+        'hiredis==0.1.1',
     ],
     zip_safe=False,
     entry_points={
