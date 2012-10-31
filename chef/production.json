@@ -1,11 +1,7 @@
 {
-    "mongodb": {
-        "host": "127.0.0.1",
-        "database": "againfm"
+    "againfm": {
+        "host": "production.again.fm",
+        "comet_host": "comet.again.fm"
     },
-    "redis": {
-        "host": "127.0.0.1",
-        "database": "0"
-    },
-	"run_list": "role[base]"
+    "run_list": ["role[base]"]
 }

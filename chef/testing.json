@@ -1,0 +1,7 @@
+{
+    "againfm": {
+        "host": "testing.again.fm",
+        "comet_host": "comet.testing.again.fm"
+    },
+    "run_list": ["role[base]"]
+}
