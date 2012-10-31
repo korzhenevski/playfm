@@ -1,5 +1,5 @@
 server {
-	server_name <%= node['againfm']['host'] %> comet.againfm.local;
+	server_name <%= node['againfm']['comet_host'] %> comet.againfm.local;
 	location / {
 		proxy_pass http://127.0.0.1:6000;
 		proxy_set_header Host $host;
