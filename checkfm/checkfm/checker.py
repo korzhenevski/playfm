@@ -39,7 +39,6 @@ class Checker(object):
         for stream_id, result in self.results:
             checked_at = int(time())
             if result['error']:
-                logging.info('stream %d error', stream_id)
                 stream = streams.find_and_modify({'id': stream_id}, update={
                     '$set': {'check_error': result['error'], 'checked_at': checked_at},
                     '$inc': {'check_retries': 1}
@@ -47,9 +46,10 @@ class Checker(object):
                 if stream['check_retries'] >= self.retries:
                     logging.info('stream %d offline', stream_id)
                     streams.update({'id': stream_id}, {'$set': {'is_online': False}})
+                else:
+                    logging.info('stream %d backoff', stream_id)
             else:
-                logging.info('stream %d ok', stream_id)
-                streams.find_and_modify({'id': stream_id}, {'$set': {
+                stream = streams.find_and_modify({'id': stream_id}, {'$set': {
                     'bitrate': result['bitrate'],
                     'is_shoutcast': result['is_shoutcast'],
                     'is_online': True,
@@ -57,6 +57,13 @@ class Checker(object):
                     'check_retries': 0,
                     'checked_at': checked_at
                 }})
+                logging.info('stream %d online', stream_id)
+
+        # update station online streams list
+            update = {}
+            key = '$pull' if result['error'] else '$addToSet'
+            update[key] = {'online_streams': stream_id}
+            self.db.stations.update({'id': stream['station_id']}, update)
 
     def check_stream(self, stream_id, url):
         try:

@@ -16,13 +16,13 @@ def normalize_str(value):
 
 @app.route('/search/<query>')
 def search_by_query(query):
-    result = search.search(normalize_str(query), threshold=0.05)
+    result = search.search(normalize_str(query), threshold=0.08)
     result = [(search_data[1], score) for search_data, score in result]
     result = [(index, item[0]) for index, item in enumerate(result)]
     result = [stations[station_id] for index, station_id in result if station_id in stations]
     return jsonify({'objects': result})
 
-def build_index_in_background(collection, interval=300):
+def build_index_in_background(collection, interval=30):
     global search
     while True:
         search = NGram(key=lambda x: x[0])
