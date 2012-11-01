@@ -1,3 +1,4 @@
+from itsdangerous import URLSafeSerializer
 from flask import Flask, request, jsonify, render_template, abort
 app = Flask(__name__)
 
@@ -5,16 +6,22 @@ app = Flask(__name__)
 def index():
     return render_template('comet.html')
 
-@app.route('/1.0/onair')
+@app.route('/onair')
 def onair():
-    station_id=request.args.get('station_id', type=int)
-    stream_id=request.args.get('stream_id', type=int)
-    if not (station_id and stream_id):
+    safe_serializer = URLSafeSerializer(secret_key=app.secret_key)
+    safe, params = safe_serializer.loads_unsafe(request.args.get('channel'))
+    if not safe:
         abort(400)
 
+    station_id, stream_id, allowed_ip = params
+    user_id = request.args.get('user_id', type=int)
     timeout = 25 if request.args.get('cursor') else None
-    info = app.cometfm.get_info(station_id=station_id,
-        stream_id=stream_id,
-        user_id=request.args.get('user_id', type=int),
-        timeout=timeout)
+
+    #if request.remote_addr != allowed_ip:
+    #    abort(400)
+    info = app.cometfm.get_info(station_id=station_id, stream_id=stream_id, user_id=user_id, timeout=timeout)
     return jsonify(info)
+
+@app.route('/stats')
+def stats():
+    return jsonify({'stats': app.cometfm.stats})

@@ -21,6 +21,7 @@ def main():
     redis = Redis(host=config.get('redis', 'host'), db=config.getint('redis', 'database'))
     app.cometfm = Server(redis=redis, endpoint=dict(config.items('endpoint')),
         onair_ttl=config.getint('server', 'onair_ttl'))
+    app.secret_key = config.get('server', 'secret_key')
     app.cometfm.run()
 
     address = (config.get('server', 'host'), config.getint('server', 'port'))

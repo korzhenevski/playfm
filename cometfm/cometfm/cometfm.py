@@ -19,6 +19,7 @@ class Server(object):
         self.endpoint = endpoint
         self.onair_ttl = onair_ttl
         self.firehose = Queue()
+        self.stats = {}
 
     def get_channel(self, name):
         if name not in self.channels:
@@ -91,18 +92,6 @@ class Server(object):
                 pass
 
             channel = self.get_channel_name(onair.station_id, onair.stream_id)
-
-            # check track duplicate
-            """
-            track_id = str(onair.track.id)
-            track_key = 'onair_track:%s' % channel
-            update_id = self.redis.getset(track_key, track_id)
-            if update_id == track_id:
-                logging.debug('skip duplicate onair track %s', track_id)
-                continue
-            self.redis.expire(track_key, 60)
-            """
-
             # cache trackinfo and notify comet clients
             logging.info('update onair channel %s', channel)
             cache_track = dict([(k, getattr(onair.track, k)) for k in ('id', 'title', 'artist', 'name', 'image_url')])
@@ -113,15 +102,21 @@ class Server(object):
 
             gevent.sleep()
 
-
     def activity_publisher(self):
         while True:
+            stats = {
+                'channels': len(self.channels),
+                'clients': 0
+            }
             for channel, event in self.channels.iteritems():
+                stats['clients'] += event.clients
                 status = StreamStatus()
                 status.type = StreamStatus.TOUCH
                 status.station_id, status.stream_id = self.parse_channel(channel)
                 status.clients = event.clients
                 self.firehose.put(status)
+
+            self.stats = stats
             gevent.sleep(5)
 
     def firehose_hydrant(self):

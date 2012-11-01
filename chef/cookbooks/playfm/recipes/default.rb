@@ -7,63 +7,77 @@ package "libevent-dev"
 package "libzmq-dev"
 
 if node[:instance_role] == 'vagrant'
-    python_virtualenv "/var/www/playfm/venv" do
-      owner "vagrant"
-      group "vagrant"
-      action :create
-    end
+    owner = "vagrant"
+    bin_path = "/usr/local/bin"
 
     python_pip "protobuf" do
       package_name "git+https://github.com/rem/python-protobuf.git"
-      virtualenv "/var/www/playfm/venv"
       action :install
     end
 
     %w{rvlib checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
       execute "#{pkg} install" do
-        command "cd /var/www/playfm/#{pkg}; /var/www/playfm/venv/bin/python setup.py develop"
+        command "cd /var/www/playfm/#{pkg}; python setup.py develop"
         action :run
       end
     end
 
-    owner = "vagrant"
-    bin_path = "/var/www/playfm/venv/bin"
+    directory "/var/log/playfm" do
+      owner owner
+      group owner
+      mode 0755
+      action :create
+    end
+
+    %w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+      supervisor_service "#{pkg}" do
+        action :enable
+        command "#{bin_path}/#{pkg}"
+        startretries 100000
+        autorestart true
+        redirect_stderr true
+        stdout_logfile "/var/log/playfm/#{pkg}.log"
+        user owner
+      end
+    end
 else
     owner = "www-data"
     bin_path = "/var/www/playfm/current/venv/bin"
-end
 
-directory "/var/log/playfm" do
-  owner owner
-  group owner
-  mode 0755
-  action :create
-end
+    directory "/var/www/playfm/conf" do
+      owner owner
+      group owner
+      mode 0755
+      action :create
+    end
 
-directory "/var/www/playfm/conf" do
-  owner owner
-  group owner
-  mode 0755
-  action :create
-end
+    %w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+      template "/var/www/playfm/conf/#{pkg}.conf" do
+        source "#{pkg}.conf.erb"
+        owner owner
+        group owner
+        mode 0644
+      end
+    end
 
-%w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
-  template "/var/www/playfm/conf/#{pkg}.conf" do
-    source "#{pkg}.conf.erb"
-    owner owner
-    group owner
-    mode 0644
-  end
+    directory "/var/log/playfm" do
+      owner owner
+      group owner
+      mode 0755
+      action :create
+    end
 
-  supervisor_service "#{pkg}" do
-    action :enable
-    command "#{bin_path}/#{pkg} /var/www/playfm/conf/#{pkg}.conf"
-    startretries 100000
-    autorestart true
-    redirect_stderr true
-    stdout_logfile "/var/log/playfm/#{pkg}.log"
-    user owner
-  end
+    %w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+      supervisor_service "#{pkg}" do
+        action :enable
+        command "#{bin_path}/#{pkg} /var/www/playfm/conf/#{pkg}.conf"
+        startretries 100000
+        autorestart true
+        redirect_stderr true
+        stdout_logfile "/var/log/playfm/#{pkg}.log"
+        user owner
+      end
+    end
 end
 
 template "#{node[:nginx][:dir]}/sites-available/playfm.conf" do
