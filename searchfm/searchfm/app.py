@@ -26,7 +26,7 @@ def build_index_in_background(collection, interval=30):
     global search
     while True:
         search = NGram(key=lambda x: x[0])
-        for station in collection.find():
+        for station in collection.find({'online_streams': {'$not': {'$size': 0}}}):
             search_str = string.join([station['title'], station.get('tag', u'')])
             search_str = normalize_str(search_str)
             search.add((search_str, station['id']))

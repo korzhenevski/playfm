@@ -13,6 +13,7 @@ setup(
         'redis==2.6.0',
         'rvlib==0.9.2',
         'hiredis==0.1.1',
+        'itsdangerous==0.17',
     ],
     zip_safe=False,
     entry_points={
