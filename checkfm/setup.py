@@ -11,6 +11,8 @@ setup(
         'pymongo==2.2.1',
         'redis==2.6.0',
         'hiredis==0.1.1',
+        #'urlnorm==1.1.2',
+        #'requests==0.14.2'
     ],
     zip_safe=False,
     entry_points={

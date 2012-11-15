@@ -10,11 +10,6 @@ if node[:instance_role] == 'vagrant'
     owner = "vagrant"
     bin_path = "/usr/local/bin"
 
-    python_pip "protobuf" do
-      package_name "git+https://github.com/rem/python-protobuf.git"
-      action :install
-    end
-
     %w{rvlib checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
       execute "#{pkg} install" do
         command "cd /var/www/playfm/#{pkg}; python setup.py develop"
@@ -37,7 +32,6 @@ if node[:instance_role] == 'vagrant'
         autorestart true
         redirect_stderr true
         stdout_logfile "/var/log/playfm/#{pkg}.log"
-        user owner
       end
     end
 else
