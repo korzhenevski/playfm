@@ -10,6 +10,7 @@ def main():
     checker = Checker(db,
         interval=conf.getint('checker', 'interval'),
         retries=conf.getint('checker', 'retries'),
+        threads=conf.getint('checker', 'threads'),
         timeout=conf.getint('checker', 'timeout'))
     checker.run()
 

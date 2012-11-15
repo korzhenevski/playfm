@@ -4,10 +4,13 @@ database = <%= node['mongodb']['database'] %>
 
 [checker]
 ; интервал проверки потоков
-interval = 60
+interval = 300
 
 ; поток выключается после нескольких неуспешных попыток
-retries = 5
+retries = 3
 
 ; таймаут ожидания потока
-timeout = 6
+timeout = 5
+
+; потоков проверки
+threads = 50

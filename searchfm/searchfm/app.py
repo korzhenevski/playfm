@@ -1,9 +1,10 @@
-from ngram import NGram
+import gevent
 import string
 import unicodedata
 import logging
-from gevent import sleep
+from ngram import NGram
 from flask import Flask, jsonify
+
 app = Flask(__name__)
 search = NGram(key=lambda x: x[0])
 stations = {}
@@ -26,11 +27,11 @@ def build_index_in_background(collection, interval=30):
     global search
     while True:
         search = NGram(key=lambda x: x[0])
-        for station in collection.find({'online_streams': {'$not': {'$size': 0}}}):
+        for station in collection.find({'status': {'$ne': 0}, 'deleted_at': 0}, sort=[('status', 1)]):
             search_str = string.join([station['title'], station.get('tag', u'')])
             search_str = normalize_str(search_str)
             search.add((search_str, station['id']))
             # copy only need keys
             stations[station['id']] = dict((key, val) for key, val in station.iteritems() if key in ('id', 'title', 'tag'))
         logging.info('index build, wait {} sec(s)'.format(interval))
-        sleep(interval)
+        gevent.sleep(interval)

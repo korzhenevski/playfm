@@ -12,11 +12,12 @@ class RadioClient:
         self.timeout = timeout
         self.url = urlparse(url)
 
-    def get_info(self):
+    def request(self):
         info = dict(
-            error='',
             is_shoutcast=False,
+            content_type='',
             time=time(),
+            error='',
             bitrate=0)
 
         try:
@@ -36,7 +37,7 @@ class RadioClient:
         except Exception as exc:
             info['error'] = 'Error: %s' % exc
         finally:
-            info['time'] = '%.4f' % (time() - info['time'])
+            info['time'] = float('%.4f' % (time() - info['time']))
 
         if info['error']:
             return info
@@ -45,6 +46,7 @@ class RadioClient:
         content_type = headers.get('content-type', '')
         metaint = int(headers.get('icy-metaint', 0))
 
+        info['content_type'] = content_type
         if content_type in ('audio/mpeg', 'application/octet-stream'):
             if not metaint:
                 info['error'] = 'Empty metaint'

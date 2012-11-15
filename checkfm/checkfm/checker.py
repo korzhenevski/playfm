@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import gevent
 import logging
 
@@ -7,33 +10,64 @@ from gevent.queue import Queue
 from checkfm.client import RadioClient
 
 class Checker(object):
-    def __init__(self, db, interval, retries, timeout):
+    def __init__(self, db, interval, retries, timeout, threads):
         self.db = db
         self.interval = interval
         self.retries = retries
         self.timeout = timeout
         self.results = Queue()
-        self.threads = Pool()
-        #self.downloader = PlaylistDownloader(db=self.db)
+        self.threads = threads
+        self.queue = Queue(self.threads)
 
     def run(self):
-        gevent.joinall([
-            gevent.spawn(self.select_streams),
-            gevent.spawn(self.commit_results),
-        ])
+        pool = Pool()
+        pool.spawn(self.producer)
+        pool.spawn(self.commit_results)
+        pool.spawn(self.update_station_status)
+        for i in xrange(self.threads):
+            pool.spawn(self.worker)
+        pool.join()
 
-    def select_streams(self):
-        logging.info('select streams...')
+    def update_station_status(self):
         while True:
-            logging.debug('fetch streams checked %s secs ago', self.interval)
-            streams = self.db.streams.find({
-                'checked_at': {'$lt': int(time() - self.interval)},
-                'perform_check': True
-            }).limit(100)
+            logging.info('update stations status')
+            # радио без потоков лежащее более 12 часов - офлайн
+            deadline = int(time() - 43200)
+            self.db.stations.update({
+                'online_at': {'$lte': deadline},
+                'streams': {'$size': 0}
+            }, {'$set': {'status': 0}}, multi=True)
+            # радио без потоков лежащее менее 12 часов - просто помечаем как лежащее
+            self.db.stations.update({
+                'online_at': {'$gt': deadline},
+                'streams': {'$size': 0}
+            }, {'$set': {'status': 2}}, multi=True)
+            # радио с потоками - онлайн
+            self.db.stations.update({
+                'streams': {'$exists': True, '$not': {'$size': 0}}
+            }, {'$set': {'status': 1}}, multi=True)
+            gevent.sleep(30)
+
+    def producer(self):
+        while True:
+            checked_at = int(time() - self.interval)
+            logging.debug('fetch streams')
+            streams = self.db.streams.find({'checked_at': {'$lt': checked_at}, 'deleted_at': 0}, fields=['id','url'])
             for stream in streams:
                 logging.info('check stream %s: %s', stream['id'], stream['url'])
-                self.threads.spawn(self.check_stream, stream['id'], stream['url'])
-            gevent.sleep(10)
+                self.queue.put(stream)
+            else:
+                gevent.sleep(1)
+
+    def worker(self):
+        while True:
+            stream = self.queue.get()
+            try:
+                client = RadioClient(stream['url'], timeout=self.timeout)
+                self.results.put((stream['id'], client.request()))
+            except Exception as exc:
+                logging.exception(exc)
+            gevent.sleep()
 
     def commit_results(self):
         logging.info('wait for results...')
@@ -42,138 +76,40 @@ class Checker(object):
             ts = int(time())
             if result['error']:
                 stream = streams.find_and_modify({'id': stream_id}, {
-                    '$set': {'check_error': result['error'], 'checked_at': ts},
+                    '$set': {
+                        'error': result['error'],
+                        'content_type': result['content_type'],
+                        'checked_at': ts,
+                        'error_at': ts,
+                        'check_time': result['time'],
+                    },
                     '$inc': {'check_retries': 1}
                 }, new=True)
-                if stream['check_retries'] >= self.retries:
-                    logging.info('stream %d offline', stream_id)
-                    streams.update({'id': stream_id}, {'$set': {'is_online': False, 'error_at': ts}})
-                else:
-                    logging.info('stream %d backoff', stream_id)
-            else:
-                stream = streams.find_and_modify({'id': stream_id}, {'$set': {
-                    'bitrate': result['bitrate'],
-                    'is_shoutcast': result['is_shoutcast'],
-                    'is_online': True,
-                    'check_error': '',
-                    'check_retries': 0,
-                    'checked_at': ts,
-                    'error_at': 0,
-                }})
-                logging.info('stream %d online', stream_id)
 
-            # update station online streams list
+                if stream['check_retries'] >= self.retries:
+                    logging.debug('stream %d offline', stream_id)
+                    streams.update({'id': stream_id}, {'$set': {'is_online': False}})
+                else:
+                    logging.debug('stream %d backoff', stream_id)
+            else:
+                stream = streams.find_and_modify({'id': stream_id}, {
+                    '$set': {
+                        'bitrate': result['bitrate'],
+                        'is_shoutcast': result['is_shoutcast'],
+                        'is_online': True,
+                        'content_type': result['content_type'],
+                        'check_retries': 0,
+                        'check_time': result['time'],
+                        'checked_at': ts,
+                        'error': '',
+                        'error_at': 0,
+                    }
+                })
+                logging.debug('stream %d online', stream_id)
+
+            # update station streams
             update = {}
             key = '$pull' if result['error'] else '$addToSet'
-            update[key] = {'online_streams': stream_id}
+            update[key] = {'streams': stream_id}
+            update['$set'] = {'online_at': ts}
             self.db.stations.update({'id': stream['station_id']}, update)
-
-    def check_stream(self, stream_id, url):
-        try:
-            client = RadioClient(url, timeout=self.timeout)
-            info = client.get_info()
-            self.results.put((stream_id, info))
-        except Exception as exc:
-            logging.exception(exc)
-
-"""
-class PlaylistDownloader(object):
-    def __init__(self, db):
-        self.interval = 86400
-        self.db = db
-
-    def run(self):
-        while True:
-            logging.info('download playlists...')
-            where = {
-                #'playlist_updated_at': {'$lt': int(time() - self.interval)},
-                'playlist_updated_at': 0,
-                'playlist': {'$not': {'$size': 0}, '$exists': True},
-            }
-            stations = self.db.stations.find(where, fields=['id','playlist'], sort=[('id', 1)]).limit(20)
-
-            requests = []
-            for station in stations:
-                for playlist_url in station['playlist']:
-                    print playlist_url
-                    request = grequests.get(playlist_url, timeout=1, headers={'User-Agent': 'iTunes/9.1.1'})
-                    request.station_id = station['id']
-                    requests.append(request)
-
-            for request in grequests_imap(requests, prefetch=False, size=20):
-                if not request:
-                    print 'failed'
-                    continue
-                station_id = request.station_id
-                print request.response.request.url
-                self.download_playlist(request.response, station_id)
-                self.db.stations.update({'id': station_id}, {'$set': {'playlist_updated_at': int(time())}})
-
-            gevent.sleep(0)
-
-    def download_playlist(self, response, station_id):
-        if not response.ok:
-            logging.info(response.error)
-            self.db.stations.update({'id': station_id}, {'$set':{'playlist_updated': False}})
-            return False
-
-        content_type = response.headers.get('content-type', '').split(';')[0].lower()
-        if content_type not in ('application/pls+xml', 'audio/x-mpegurl', 'audio/x-scpls', 'text/plain', 'audio/scpls'):
-            return False
-
-        urls = self.extract_streams(response.content)
-        self.update_station_streams(station_id, urls, playlist_url=response.request.url)
-        self.db.stations.update({'id': station_id}, {'$set':{'playlist_updated': True}})
-
-    def update_station_streams(self, station_id, urls, playlist_url):
-        print '{} has {} streams'.format(station_id, len(urls))
-        streams = self.db.streams
-        streams.remove({'station_id': station_id, 'playlist_url': playlist_url})
-        for url in urls:
-            stream = dict(
-                station_id=station_id,
-                url=unicode(url),
-                created_at=datetime.now(),
-                checked_at=0,
-                error_at=0,
-                bitrate=0,
-                is_online=False,
-                playlist_url=unicode(playlist_url),
-                perform_check=True,
-                is_shoutcast=False)
-            stream['id'] = self.db.object_ids.find_and_modify({'_id': 'streams'}, {'$inc': {'next': 1}}, new=True, upsert=True)['next']
-            streams.insert(stream)
-
-    def normalize_url(self, url):
-        try:
-            return urlnorm.norm(url)
-        except urlnorm.InvalidUrl:
-            print 'invalid url: ' + url
-            pass
-        return None
-
-    def extract_streams(self, text):
-        regex = r"(?im)^(file(\d+)=)?(http(.*?))$"
-        urls = set([self.normalize_url(match.group(3).strip()) for match in re.finditer(regex, text)])
-        return filter(None, urls)
-
-def grequests_imap(requests, prefetch=True, size=2):
-    ""Concurrently converts a generator object of Requests to
-    a generator of Responses.
-
-    :param requests: a generator of Request objects.
-    :param prefetch: If False, the content will not be downloaded immediately.
-    :param size: Specifies the number of requests to make at a time. default is 2
-    ""
-
-    pool = Pool(size)
-
-    def send(r):
-        r.send(prefetch)
-        return r
-
-    for r in pool.imap_unordered(send, requests):
-        yield r
-
-    pool.join()
-"""

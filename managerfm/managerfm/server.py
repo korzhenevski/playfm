@@ -163,7 +163,7 @@ class ManagerServer(object):
             self.streams[stream_id]['job_id'] = None
 
     def find_stream(self, stream_id):
-        return self.db.streams.find_one({'id': stream_id})
+        return self.db.streams.find_one({'id': stream_id, 'deleted_at': 0})
 
     def get_job_for_worker(self, worker_id):
         if not self.queue:

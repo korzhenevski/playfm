@@ -32,6 +32,7 @@ if node[:instance_role] == 'vagrant'
         autorestart true
         redirect_stderr true
         stdout_logfile "/var/log/playfm/#{pkg}.log"
+        stopsignal "INT"
       end
     end
 else
@@ -70,6 +71,7 @@ else
         redirect_stderr true
         stdout_logfile "/var/log/playfm/#{pkg}.log"
         user owner
+        stopsignal "INT"
       end
     end
 end
