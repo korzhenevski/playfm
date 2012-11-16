@@ -21,6 +21,7 @@ def search_by_query(query):
     result = [(search_data[1], score) for search_data, score in result]
     result = [(index, item[0]) for index, item in enumerate(result)]
     result = [stations[station_id] for index, station_id in result if station_id in stations]
+    result = sorted(result, key=lambda station: station['is_online'], reverse=True)
     return jsonify({'objects': result})
 
 def build_index_in_background(collection, interval=30):
@@ -31,7 +32,9 @@ def build_index_in_background(collection, interval=30):
             search_str = string.join([station['title'], station.get('tag', u'')])
             search_str = normalize_str(search_str)
             search.add((search_str, station['id']))
-            # copy only need keys
-            stations[station['id']] = dict((key, val) for key, val in station.iteritems() if key in ('id', 'title', 'tag'))
+            stations[station['id']] = dict(
+                id=station['id'],
+                title=station['title'],
+                is_online=(station['status'] == 1))
         logging.info('index build, wait {} sec(s)'.format(interval))
         gevent.sleep(interval)
