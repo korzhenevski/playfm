@@ -5,7 +5,7 @@ Vagrant::Config.run do |config|
   # Every Vagrant virtual environment requires a box to build off of.
   config.vm.box = "base"
   config.vm.box_url = "http://files.vagrantup.com/precise64.box"
-  config.vm.network :hostonly, "10.0.0.3"
+  config.vm.network :hostonly, "192.168.2.3"
 
   config.nfs.map_uid = Process.uid
   config.nfs.map_gid = Process.gid
