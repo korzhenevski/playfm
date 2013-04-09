@@ -10,9 +10,10 @@ import gevent
 import signal
 import logging
 import gflags
+from gevent.pool import Group
 from gevent.wsgi import WSGIServer
 
-from .comet import create_app
+from .air import create_app
 
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
@@ -21,6 +22,11 @@ gflags.DEFINE_string('mongo_host', '127.0.0.1', 'MongoDB host')
 gflags.DEFINE_integer('mongo_port', 27017, 'MongoDB port')
 gflags.DEFINE_string('host', '127.0.0.1', 'Server host')
 gflags.DEFINE_integer('port', 8080, 'Server port')
+
+def repeat_call(fn, interval, *args, **kwargs):
+    while True:
+        fn(*args, **kwargs)
+        gevent.sleep(interval)
 
 def main():
     try:
@@ -32,9 +38,15 @@ def main():
     app = create_app(mongo_host=FLAGS.mongo_host, mongo_port=FLAGS.mongo_port)
     server = WSGIServer((FLAGS.host, FLAGS.port), app)
 
+    #gevent.spawn(repeat_call, app.manager.count_clients, interval=1)
+    #gevent.spawn(repeat_call, app.manager.drop_offline_channels, interval=1, deadline=5)
+    #gevent.spawn(repeat_call, app.manager.publish_stats, interval=1)
+
+
     def shutdown():
         logging.warning('server shutdown')
         server.stop()
+
     gevent.signal(signal.SIGTERM, shutdown)
 
     try:

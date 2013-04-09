@@ -4,7 +4,6 @@
 from time import time
 from gevent.event import Event
 
-
 class Manager(object):
     def __init__(self):
         self.channels = {}

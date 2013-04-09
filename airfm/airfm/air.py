@@ -2,24 +2,25 @@
 # -*- coding: utf-8 -*-
 
 import os
-import ujson as json
 from pymongo.connection import MongoClient
+from bson import json_util
 from werkzeug.wrappers import Request, Response
 from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.routing import Map, Rule
 from jinja2 import Environment, FileSystemLoader
 from .manager import Manager
+from time import time
 
 def jsonify(data=None, **kwargs):
-    return Response(json.dumps(data or kwargs or {}), mimetype='application/json')
+    return Response(json_util.dumps(data or kwargs or {}), mimetype='application/json')
 
 # добавить понятие метода и параметров метода
 # comet.on('air/10432_32423', {wait: 25, uid: 10}, function(resp){
 # })
 
-class Comet(object):
+class Air(object):
     def __init__(self, config):
-        self.mongo = MongoClient(host=config['mongo_host'], port=config['mongo_port'])
+        self.mongo = MongoClient(host=config['mongo_host'], port=config['mongo_port'])['test']
         self.manager = Manager()
 
         template_path = os.path.join(os.path.dirname(__file__), 'templates')
@@ -28,7 +29,29 @@ class Comet(object):
         self.url_map = Map([
             Rule('/loader', endpoint='loader'),
             Rule('/air/<channel_name>', endpoint='air'),
+            Rule('/save_meta', endpoint='save_meta'),
         ])
+
+    def on_save_meta(self, request):
+        title = request.args.get('title')
+        def get_ts():
+            return int(time())
+        from zlib import crc32
+        ts = get_ts()
+
+        h = crc32(title.lower().strip())
+        self.mongo.air.update({
+            'radio_id': 1,
+            'session'
+            'ts': {'$gte': ts - 10}
+        }, {'$setOnInsert': {
+            'ts': ts,
+            'title': title,
+            'hash': h,
+        }, '$set': {'u': ts}}, upsert=True)
+
+        meta = list(self.mongo.air.find())
+        return jsonify(meta=meta, ts=ts)
 
     def on_air(self, request, channel_name):
         user_id = abs(request.args.get('uid', type=int, default=0))
@@ -70,7 +93,7 @@ class Comet(object):
         return self.wsgi_app(environ, start_response)
 
 def create_app(mongo_host='127.0.0.1', mongo_port=27017):
-    app = Comet({
+    app = Air({
         'mongo_host': mongo_host,
         'mongo_port': mongo_port,
     })
