@@ -13,6 +13,10 @@ from .manager import Manager
 def jsonify(data=None, **kwargs):
     return Response(json.dumps(data or kwargs or {}), mimetype='application/json')
 
+# добавить понятие метода и параметров метода
+# comet.on('air/10432_32423', {wait: 25, uid: 10}, function(resp){
+# })
+
 class Comet(object):
     def __init__(self, config):
         self.mongo = MongoClient(host=config['mongo_host'], port=config['mongo_port'])
