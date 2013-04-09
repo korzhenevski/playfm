@@ -139,13 +139,6 @@ class Event(GeventEvent):
         if self.clients == 1:
             self.manager.event_set_state(self.channel, state=True, clients=self.clients)
 
-    """
-    def unlink(self, *args, **kwargs):
-        super(Event, self).unlink(*args, **kwargs)
-        if not self.clients:
-            self.manager.event_set_state(self.channel, state=False, clients=self.clients)
-    """
-
     @property
     def clients(self):
         return len(self._links)
