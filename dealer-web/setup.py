@@ -4,7 +4,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="dealer",
+    name="dealer-web",
     version="0.0.1",
     author="again.fm",
     author_email="team@again.fm",
@@ -15,6 +15,6 @@ setup(
     ],
     zip_safe=False,
     entry_points={
-        'console_scripts': ['dealer = dealer.cli:main'],
+        'console_scripts': ['dealer-web = dealer_web:main'],
     },
 )

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html data-ng-app="dealer">
+    <head>
+        <title></title>
+        <meta charset="utf8" />
+        <link rel="stylesheet" href="/static/css/bootstrap.css">
+        <link rel="stylesheet" href="/static/css/dealer.css">
+    </head>
+    <body>
+        <div class="container" data-ng-view=""></div>
+
+        <script type="text/ng-template" id="/tasks.html">
+            <h1>Tasks</h1>
+            <a href="#/tasks/add">Add task</a>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th width="100px">Owner</th>
+                    <th>URL</th>
+                    <th></th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr data-ng-repeat="task in tasks|orderBy:'queued_at':true" ng-class="taskClass(task)">
+                    <td class="muted">{{ task.consumer }}</td>
+                    <td>{{ task.request.url }}</td>
+                    <td>
+                        <p>Status: {{ task.status }}</p>
+                        <p>Queued: {{ task.queued_at*1000|date:'medium' }}</p>
+                    </td>
+                    <td>
+                        <button class="btn btn-danger">delete</button>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </script>
+
+        <script type="text/ng-template" id="/tasks-add.html">
+            <h1>Add task</h1>
+            <p><a href="#/tasks">back to tasks</a></p>
+            <form data-ng-controller="AddCtrl" data-ng-submit="submit()">
+                <div class="row">
+                    <div class="span6">
+                        <input class="input-xlarge" type="url" name="url" required="" data-ng-model="request.url" placeholder="URL">
+
+                        <label class="checkbox">
+                            <input type="checkbox" name="parse_stream" data-ng-model="request.parse_stream" /> Parse stream
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" name="record_stream" data-ng-model="request.record_stream" /> Record stream
+                        </label>
+
+                        <label>User Agent</label>
+                        <input class="input-xlarge" type="text" name="user_agent" data-ng-model="request.user_agent">
+
+                        <label>Content Type Limit</label>
+                        <input type="text" name="content_type_limit" data-ng-model="request.content_type_limit" data-ng-list="">
+
+                        <label>Consumer</label>
+                        <input type="text" name="consumer" data-ng-model="request.consumer" placeholder="Consumer">
+
+                        <label>Connect Timeout</label>
+                        <input type="number" class="input-mini" min="1" name="connect_timeout" data-ng-model="request.connect_timeout">
+
+                        <label>Fetch Timeout</label>
+                        <input type="number" class="input-mini" min="1" name="fetch_timeout" data-ng-model="request.fetch_timeout">
+
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Add Request</button>
+                        </div>
+                    </div>
+                    <div class="span6">
+                        <pre>{{ request|json }}</pre>
+                    </div>
+                </div>
+            </form>
+        </script>
+
+        <script src="/static/js/angular.js"></script>
+        <script src="/static/js/angular-locale_ru-ru.js"></script>
+        <script src="/static/js/angular-resource.js"></script>
+        <script src="/static/js/dealer.js"></script>
+    </body>
+</html>
