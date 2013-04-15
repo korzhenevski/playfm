@@ -6,7 +6,7 @@ from gevent.queue import Queue
 from gevent.pool import Pool
 from gevent_zeromq import zmq
 from workerfm.radio import Radio, RadioReadError
-from rvlib import pb_safe_parse, pb_dump, WorkerRequest, ManagerResponse, JobEvent, JobEventResponse
+
 
 class Worker(object):
     def __init__(self, endpoint, maxjobs):
@@ -15,12 +15,6 @@ class Worker(object):
         self.jobs = {}
         self.context = zmq.Context()
         self.endpoint = endpoint
-
-    def run(self):
-        gevent.joinall([
-            gevent.spawn(self.event_sender),
-            gevent.spawn(self.worker)
-        ])
 
     def worker(self):
         self.manager_socket = self.context.socket(zmq.REQ)

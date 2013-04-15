@@ -17,7 +17,6 @@ class Radio(object):
             while True:
                 if redirs > 5:
                     raise RuntimeError('too many redirects')
-                    #print url.geturl()
                 self.stream = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.stream.settimeout(timeout)
                 self.stream.connect((url.hostname, url.port or 80))

@@ -1,9 +1,12 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from setuptools import setup, find_packages
 
 setup(
     name='airfm',
     version='0.1.0',
-    author='outself',
+    author='RadioVoice',
     author_email='team@again.fm',
     packages=find_packages(),
     install_requires=[],

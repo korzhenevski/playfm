@@ -3,6 +3,8 @@
 .env
 venv
 .vagrant
+spike
+spike-broker
 
 # Packages
 *.egg

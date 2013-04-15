@@ -14,13 +14,17 @@ from time import time
 def jsonify(data=None, **kwargs):
     return Response(json_util.dumps(data or kwargs or {}), mimetype='application/json')
 
+def get_ts():
+    return int(time())
+
 # добавить понятие метода и параметров метода
 # comet.on('air/10432_32423', {wait: 25, uid: 10}, function(resp){
 # })
 
 class Air(object):
     def __init__(self, config):
-        self.mongo = MongoClient(host=config['mongo_host'], port=config['mongo_port'])['test']
+        mongo = MongoClient(host=config['mongo_host'], port=config['mongo_port'])
+        self.db = mongo[config['mongo_db']]
         self.manager = Manager()
 
         template_path = os.path.join(os.path.dirname(__file__), 'templates')
@@ -31,41 +35,6 @@ class Air(object):
             Rule('/air/<channel_name>', endpoint='air'),
             Rule('/save_meta', endpoint='save_meta'),
         ])
-
-    def on_save_meta(self, request):
-        title = request.args.get('title')
-        def get_ts():
-            return int(time())
-        from zlib import crc32
-        ts = get_ts()
-
-        h = crc32(title.lower().strip())
-        self.mongo.air.update({
-            'radio_id': 1,
-            'session'
-            'ts': {'$gte': ts - 10}
-        }, {'$setOnInsert': {
-            'ts': ts,
-            'title': title,
-            'hash': h,
-        }, '$set': {'u': ts}}, upsert=True)
-
-        meta = list(self.mongo.air.find())
-        return jsonify(meta=meta, ts=ts)
-
-    def on_air(self, request, channel_name):
-        user_id = abs(request.args.get('uid', type=int, default=0))
-        timeout = abs(request.args.get('wait', type=int, default=0))
-        if timeout >= 60:
-            timeout = 60
-
-        channel = self.manager.get_channel(channel_name)
-        channel.wait(timeout)
-
-        return jsonify(air={'artist': 'Artist', 'name': 'Name'})
-
-    def on_loader(self, request):
-        return self.render_template('loader.html')
 
     def error_404(self):
         return Response('404', mimetype='text/plain', status=404)
@@ -92,9 +61,42 @@ class Air(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-def create_app(mongo_host='127.0.0.1', mongo_port=27017):
+    def on_air(self, request, channel_name):
+        user_id = abs(request.args.get('uid', type=int, default=0))
+        timeout = abs(request.args.get('wait', type=int, default=0))
+        if timeout >= 60:
+            timeout = 60
+
+        channel = self.manager.get_channel(channel_name)
+        channel.wait(timeout)
+
+        air = self.db.air_channel.find_one({'_id': channel_name})
+        return jsonify(air=air)
+
+    def on_loader(self, request):
+        return self.render_template('loader.html')
+
+    def watch_for_updates(self):
+        pass
+
+    def service_visit(self):
+        self.snapshot_counters()
+        self.manager.drop_offline_channels(deadline=60)
+
+    def snapshot_counters(self):
+        ts = int(time())
+        coll = self.db.air_activity
+        coll.remove({'ts': {'$lte': ts - 60}})
+        for name, channel in self.manager.channels.iteritems():
+            coll.update({'_id': name}, {'$set': {
+                'c': channel.clients_count,
+                'ts': ts
+            }}, upsert=True)
+
+def create_app(mongo_host='127.0.0.1', mongo_port=27017, mongo_db='againfm'):
     app = Air({
         'mongo_host': mongo_host,
         'mongo_port': mongo_port,
+        'mongo_db': mongo_db
     })
     return app

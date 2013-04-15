@@ -1,16 +1,15 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from setuptools import setup, find_packages
 
 setup(
-    name="workerfm",
-    version="0.9.0",
-    author="Yura Nevsky",
-    author_email="yura.nevsky@gmail.com",
+    name='workerfm',
+    version='0.2.0',
+    author='RadioVoice',
+    author_email='team@again.fm',
     packages=find_packages(),
-    install_requires=[
-        'gevent==0.13.7',
-        'gevent-zeromq==0.2.5',
-	'rvlib==0.9.2',
-    ],
+    install_requires=[],
     zip_safe=False,
     entry_points={
         'console_scripts': [

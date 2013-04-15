@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(
 FLAGS = gflags.FLAGS
 gflags.DEFINE_string('mongo_host', '127.0.0.1', 'MongoDB host')
 gflags.DEFINE_integer('mongo_port', 27017, 'MongoDB port')
+gflags.DEFINE_string('mongo_db', 'againfm', 'MongoDB database')
 gflags.DEFINE_string('host', '127.0.0.1', 'Server host')
 gflags.DEFINE_integer('port', 8080, 'Server port')
 
@@ -35,13 +36,10 @@ def main():
         print '%s\\nUsage: %s ARGS\\n%s' % (e, sys.argv[0], FLAGS)
         sys.exit(1)
 
-    app = create_app(mongo_host=FLAGS.mongo_host, mongo_port=FLAGS.mongo_port)
+    app = create_app(mongo_host=FLAGS.mongo_host, mongo_port=FLAGS.mongo_port, mongo_db=FLAGS.mongo_db)
     server = WSGIServer((FLAGS.host, FLAGS.port), app)
 
-    #gevent.spawn(repeat_call, app.manager.count_clients, interval=1)
-    #gevent.spawn(repeat_call, app.manager.drop_offline_channels, interval=1, deadline=5)
-    #gevent.spawn(repeat_call, app.manager.publish_stats, interval=1)
-
+    gevent.spawn(repeat_call, app.service_visit, interval=1)
 
     def shutdown():
         logging.warning('server shutdown')
