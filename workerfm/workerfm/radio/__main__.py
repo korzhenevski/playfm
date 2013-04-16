@@ -3,13 +3,18 @@
 from gevent.monkey import patch_all
 patch_all()
 
+import gevent
+import zerorpc
 from .dispatcher import Dispatcher
 from pprint import pprint as pp
 
 def main():
-    dispatcher = Dispatcher(pool_size=1)
-    w = dispatcher.new_worker()
-    w.run(task={'url': 'http://fr2.ah.fm:9000/', 'w': {'base': '/tmp/records', 'prefix': 'test_'}})
+    manager = zerorpc.Client('tcp://localhost:4242')
+    dispatcher = Dispatcher('test_worker', manager)
+    gevent.joinall([
+        gevent.spawn(dispatcher.dispatch, pool_size=1),
+        gevent.spawn(dispatcher.send_results)
+    ])
 
 if __name__ == '__main__':
     main()

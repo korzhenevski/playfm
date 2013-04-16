@@ -3,41 +3,81 @@
 
 import gevent
 from gevent.pool import Pool
+from gevent.queue import Queue
 from .radio import RadioClient
 from .writer import StripeWriter
 
 
 class Dispatcher(object):
-    def __init__(self, pool_size=None):
-        self.pool = Pool(size=pool_size)
+    def __init__(self, name, manager):
+        self.name = name
+        self.manager = manager
+        self.tasks = {}
+        self.results = Queue()
 
-    def dispatch(self):
+    def dispatch(self, pool_size=None):
+        self.pool = Pool(size=pool_size)
         while True:
             self.pool.wait_available()
+            task = self.reserve_task()
+            if task:
+                worker = self.new_worker()
+                self.pool.spawn(worker.run, task)
+                self.tasks[task['id']] = worker
+            gevent.sleep(1)
+
+    def kill_task(self, task_id):
+        worker = self.tasks.get(task_id)
+        if worker:
+            worker.kill()
+
+    def reserve_task(self):
+        return self.manager.reserve_task(self.name)
 
     def new_worker(self):
-        return Worker(parent=self)
-
-    def handle_meta(self, worker):
-        print worker.meta
-
-    def handle_stripe_write(self, worker):
-        print worker.writer.path, worker.writer.written
+        return Radio(parent=self)
 
     def handle_start(self, worker):
-        print worker.radio.headers
+        self.put_result(worker, 'start', {'headers': worker.radio.headers})
 
-    def handle_worker(self, worker):
-        pass
+    def handle_meta(self, worker):
+        self.put_result(worker, 'meta', {'meta': worker.meta})
 
-class Worker(object):
+    def handle_stripe_write(self, worker):
+        if not worker.writer:
+            return
+        self.put_result(worker, 'write', {
+            'sid': worker.writer.stripe_id,
+            'id': worker.writer.name,
+            'w': worker.writer.written
+        })
+
+    def put_result(self, worker, kind, payload=None):
+        self.results.put([worker.task['id'], kind, payload])
+
+    def send_results(self):
+        for result in self.results:
+            print result
+            self.manager.save_result(*result)
+
+
+class Radio(object):
     def __init__(self, parent):
-        self.parent = parent
         self.meta = None
+        self.parent = parent
+
+    def select_stream(self):
+        streams = self.parent.manager.get_streams(self.task['payload']['radio_id'])
+        self.stream = streams[0] if streams else None
 
     def run(self, task):
         self.task = task
-        self.radio = RadioClient(task['url'])
+
+        self.select_stream()
+        if not self.stream:
+            raise RuntimeError('no streams')
+
+        self.radio = RadioClient(self['url'])
 
         writer_config = task.get('w')
         if writer_config:
@@ -46,19 +86,18 @@ class Worker(object):
             self.writer = None
 
         self.radio.connect()
+        self.parent.handle_start(self)
         self.running = True
 
         while self.running:
             chunk, meta = self.radio.read()
             if self.writer:
                 self.writer.write(chunk)
+                self.parent.handle_stripe_write(self)
 
-            if meta != self.meta:
+            if meta and meta != self.meta:
                 self.meta = meta
-
-            self.parent.handle_worker(self)
-
-        self.radio.close()
+                self.parent.handle_meta(self)
 
     def kill(self):
         self.running = False
