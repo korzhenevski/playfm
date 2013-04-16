@@ -13,7 +13,7 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'cometfm = cometfm:main',
+            'cometfm = cometfm.__main__:main',
         ],
     },
 )

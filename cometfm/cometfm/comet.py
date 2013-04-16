@@ -34,11 +34,65 @@ class Comet(object):
                                      autoescape=True)
         self.url_map = Map([
             Rule('/loader', endpoint='loader'),
-            Rule('/onair/<int:radio_id>', endpoint='onair'),
+            Rule('/onair/<int:radio_id>', endpoint='air'),
             Rule('/stats', endpoint='stats'),
         ])
 
         self.process = psutil.Process(os.getpid())
+
+    def on_loader(self, request):
+        return self.render_template('loader.html')
+
+    def on_air(self, request, radio_id):
+        if radio_id >= 10 ** 9:
+            return self.error_404()
+
+        # validate channel_name
+        timeout = abs(request.args.get('wait', type=int, default=0))
+        if timeout >= 60:
+            timeout = 60
+
+        if timeout:
+            channel = self.manager.get_channel(radio_id)
+            channel.wait(timeout)
+
+        try:
+            user_id = abs(request.args.get('uid', type=int, default=0))
+            info = self.get_onair(radio_id)
+
+            if user_id and info.get('id'):
+                cache_key = 'user:{}:onair_likes'.format(user_id)
+                info['liked'] = bool(self.redis.zscore(cache_key, info['id']))
+            return jsonify(info=info)
+        except RedisError:
+            return Response('', status=503, mimetype='application/json')
+
+    def on_stats(self, request):
+        process = {
+            'cpu_percent': self.process.get_cpu_percent(),
+            'memory_percent': self.process.get_memory_percent(),
+        }
+        return jsonify({'stats': {
+            'channels': len(self.manager.channels),
+            'process': process
+        }})
+
+    @retry_on_exceptions([RedisError])
+    def get_onair(self, radio_id):
+        return self.redis.hgetall('radio:{}:onair'.format(radio_id))
+
+    @retry_on_exceptions([RedisError])
+    def watch_for_updates(self):
+        pubsub = self.redis.pubsub()
+        pubsub.psubscribe('radio:*:onair_updates')
+
+        for update in pubsub.listen():
+            channel = update['channel']
+            try:
+                radio_id = int(channel.split(':')[-2])
+                self.manager.wakeup_channel(radio_id)
+            except ValueError:
+                pass
 
     def error_404(self):
         return Response('404', mimetype='text/plain', status=404)
@@ -65,67 +119,11 @@ class Comet(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-    def on_onair(self, request, radio_id):
-        if radio_id >= 10 ** 9:
-            return self.error_404()
-
-        # validate channel_name
-        timeout = abs(request.args.get('wait', type=int, default=0))
-        if timeout >= 60:
-            timeout = 60
-
-        if timeout:
-            channel = self.manager.get_channel(radio_id)
-            channel.wait(timeout)
-
-        try:
-            user_id = abs(request.args.get('uid', type=int, default=0))
-            info = self.get_onair(radio_id)
-
-            if user_id and info.get('id'):
-                cache_key = 'user:{}:onair_likes'.format(user_id)
-                info['liked'] = bool(self.redis.zscore(cache_key, info['id']))
-            return jsonify(info=info)
-        except RedisError:
-            return Response('', status=503, mimetype='application/json')
-
-
-    @retry_on_exceptions([RedisError])
-    def get_onair(self, radio_id):
-        return self.redis.hgetall('radio:{}:onair'.format(radio_id))
-
-    def on_loader(self, request):
-        return self.render_template('loader.html')
-
-    def on_stats(self, request):
-        return jsonify({'stats': {
-            'channels': len(self.manager.channels),
-            'process': self.get_stats()
-        }})
-
-    @retry_on_exceptions([RedisError])
-    def watch_for_updates(self):
-        pubsub = self.redis.pubsub()
-        pubsub.psubscribe('radio:*:onair_updates')
-
-        for update in pubsub.listen():
-            channel = update['channel']
-            try:
-                radio_id = int(channel.split(':')[-2])
-                self.manager.wakeup_channel(radio_id)
-            except ValueError:
-                pass
-
     def service_visit(self):
         while True:
             self.manager.drop_offline_channels()
             gevent.sleep(1)
 
-    def get_stats(self):
-        return {
-            'cpu_percent': self.process.get_cpu_percent(),
-            'memory_percent': self.process.get_memory_percent(),
-        }
 
 
 def create_app(redis_host='127.0.0.1', redis_db=0):
