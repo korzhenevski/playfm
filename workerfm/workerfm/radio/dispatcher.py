@@ -7,7 +7,6 @@ from gevent.queue import Queue
 from .radio import RadioClient
 from .writer import StripeWriter
 
-
 class Dispatcher(object):
     def __init__(self, name, manager):
         self.name = name
@@ -32,25 +31,10 @@ class Dispatcher(object):
             worker.kill()
 
     def reserve_task(self):
-        return self.manager.reserve_task(self.name)
+        return self.manager.reserve_for_worker(self.name)
 
     def new_worker(self):
         return Radio(parent=self)
-
-    def handle_start(self, worker):
-        self.put_result(worker, 'start', {'headers': worker.radio.headers})
-
-    def handle_meta(self, worker):
-        self.put_result(worker, 'meta', {'meta': worker.meta})
-
-    def handle_stripe_write(self, worker):
-        if not worker.writer:
-            return
-        self.put_result(worker, 'write', {
-            'sid': worker.writer.stripe_id,
-            'id': worker.writer.name,
-            'w': worker.writer.written
-        })
 
     def put_result(self, worker, kind, payload=None):
         self.results.put([worker.task['id'], kind, payload])
@@ -59,6 +43,7 @@ class Dispatcher(object):
         for result in self.results:
             print result
             self.manager.save_result(*result)
+
 
 
 class Radio(object):

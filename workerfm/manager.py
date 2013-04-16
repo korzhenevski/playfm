@@ -10,27 +10,36 @@ class Manager(object):
         self._db = db
 
     def get_streams(self, radio_id):
+        """ get online streams """
         where = {'radio_id': int(radio_id), 'deleted_at': 0, 'is_online': True}
-        return list(self._db.streams.find(where, fields={'_id': 0, 'url': 1, 'id': 1, 'bitrate': 1}))
+        return list(self._db.streams.find(where, fields={'_id': 0, 'id': 1, 'url': 1, 'bitrate': 1}))
 
-    def reserve_task(self, worker_id):
+    def reserve_for_worker(self, worker_id):
         ts = int(time())
         where = {'status': {'$in': ['pending', 'processing']}, 'heartbeat_at': {'$lte': ts - 10}}
-        return self._db.tasks.find_and_modify(where, {'$set': {
+        data = self._db.tasks.find_and_modify(where, {'$set': {
             'worker_id': worker_id,
             'status': 'processing',
             'heartbeat_at': ts,
-        }}, fields={'_id': 0, 'id': 1, 'payload': 1, 'name': 1})
+        }}, fields={'_id': 0, 'id': 1, 'radio_id': 1, 'record': True})
+        if not data:
+            return
+        task = {'id': data['id']}
+        task.update(data['request'])
+        return task
 
     def record_radio(self, radio_id):
-        return self.put_task('record_radio', {'radio_id': radio_id})
+        self.track_radio(radio_id, record=True)
 
-    def put_task(self, name, payload):
+    def track_radio(self, radio_id, record=False):
+        # mark deleted exists task
+        self._db.tasks.update({'id': int(radio_id)}, {'$set': {'status': 'deleted', 'deleted_at': int(time())}})
+        # create new task
         task_id = self.get_next_id('tasks')
         self._db.tasks.insert({
             'id': task_id,
-            'name': name,
-            'payload': payload,
+            'radio_id': radio_id,
+            'record': record,
             'status': 'pending',
             'heartbeat_at': 0,
             'created_at': int(time())

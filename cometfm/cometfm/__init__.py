@@ -10,19 +10,18 @@ import gevent
 import signal
 import logging
 import gflags
-from gevent.pool import Group
 from gevent.wsgi import WSGIServer
 
-from .air import create_app
+from .comet import create_app
 
 logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
 FLAGS = gflags.FLAGS
-gflags.DEFINE_string('mongo_host', '127.0.0.1', 'MongoDB host')
-gflags.DEFINE_integer('mongo_port', 27017, 'MongoDB port')
-gflags.DEFINE_string('mongo_db', 'againfm', 'MongoDB database')
+gflags.DEFINE_string('redis_host', '127.0.0.1', 'Redis host')
+gflags.DEFINE_integer('redis_db', 0, 'Redis database')
 gflags.DEFINE_string('host', '127.0.0.1', 'Server host')
 gflags.DEFINE_integer('port', 8080, 'Server port')
+gflags.DEFINE_integer('maxconn', 5000, 'Max connection limit')
 
 def repeat_call(fn, interval, *args, **kwargs):
     while True:
@@ -36,10 +35,8 @@ def main():
         print '%s\\nUsage: %s ARGS\\n%s' % (e, sys.argv[0], FLAGS)
         sys.exit(1)
 
-    app = create_app(mongo_host=FLAGS.mongo_host, mongo_port=FLAGS.mongo_port, mongo_db=FLAGS.mongo_db)
-    server = WSGIServer((FLAGS.host, FLAGS.port), app)
-
-    gevent.spawn(repeat_call, app.service_visit, interval=1)
+    app = create_app(redis_host=FLAGS.redis_host, redis_db=FLAGS.redis_db)
+    server = WSGIServer((FLAGS.host, FLAGS.port), app, spawn=FLAGS.maxconn)
 
     def shutdown():
         logging.warning('server shutdown')
@@ -49,6 +46,7 @@ def main():
 
     try:
         logging.info("server running on %s:%d. pid %s", FLAGS.host, FLAGS.port, os.getpid())
+        gevent.spawn(app.service_visit)
         server.serve_forever()
     except KeyboardInterrupt:
         shutdown()

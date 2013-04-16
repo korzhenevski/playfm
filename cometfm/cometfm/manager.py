@@ -4,7 +4,6 @@
 from time import time
 from gevent.event import Event
 
-
 class Manager(object):
     def __init__(self):
         self.channels = {}
@@ -15,11 +14,16 @@ class Manager(object):
         return self.channels.get(name)
 
     def wakeup_channel(self, name):
+        # skip not watching channels
+        if name not in self.channels:
+            return
         channel = self.get_channel(name)
         channel.set()
         channel.clear()
 
-    def drop_offline_channels(self, deadline):
+    def drop_offline_channels(self, deadline=60):
+        if not self.channels:
+            return
         deadline = time() - deadline
         drop_list = []
         for name, channel in self.channels.iteritems():
@@ -60,3 +64,4 @@ if __name__ == '__main__':
 
     manager.drop_offline_channels(10)
     assert len(manager.channels) == 0
+    print 'ok'

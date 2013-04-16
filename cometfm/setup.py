@@ -4,7 +4,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='airfm',
+    name='cometfm',
     version='0.1.0',
     author='RadioVoice',
     author_email='team@again.fm',
@@ -13,7 +13,7 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'airfm = airfm:main',
+            'cometfm = cometfm:main',
         ],
     },
 )
