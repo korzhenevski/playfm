@@ -3,14 +3,14 @@
 
 import os
 import gevent
-from redis import Redis, RedisError
+import psutil
 import ujson as json
+from redis import Redis, RedisError
 from werkzeug.wrappers import Request, Response
 from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.routing import Map, Rule
 from jinja2 import Environment, FileSystemLoader
 from time import time
-import psutil
 
 from .manager import Manager
 from .utils import retry_on_exceptions
@@ -68,17 +68,27 @@ class Comet(object):
             return Response('', status=503, mimetype='application/json')
 
     def on_stats(self, request):
-        process = {
-            'cpu_percent': self.process.get_cpu_percent(),
-            'memory_percent': self.process.get_memory_percent(),
-        }
-        return jsonify({'stats': {
-            'channels': len(self.manager.channels),
-            'process': process
-        }})
+        total_clients = 0
+        clients = {}
+        for name, channel in self.manager.channels.iteritems():
+            clients[name] = channel.clients_count
+            total_clients += channel.clients_count
+
+        return jsonify({
+            'realtime': {
+                'channels': len(self.manager.channels),
+                'clients': clients,
+                'total_clients': total_clients,
+            },
+            'process': {
+                'cpu_percent': self.process.get_cpu_percent(),
+                'memory_percent': self.process.get_memory_percent(),
+            }
+        })
 
     @retry_on_exceptions([RedisError])
     def get_onair(self, radio_id):
+        # TODO: add LRU caching
         return self.redis.hgetall('radio:{}:onair'.format(radio_id))
 
     @retry_on_exceptions([RedisError])
@@ -123,7 +133,6 @@ class Comet(object):
         while True:
             self.manager.drop_offline_channels()
             gevent.sleep(1)
-
 
 
 def create_app(redis_host='127.0.0.1', redis_db=0):
