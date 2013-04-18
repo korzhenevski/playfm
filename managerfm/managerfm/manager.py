@@ -27,7 +27,7 @@ class Manager(object):
             'worker_id': worker_id,
             'status': 'processing',
             'heartbeat_at': ts,
-            }}, fields={'_id': 0, 'id': 1, 'radio_id': 1, 'record': True})
+        }}, fields={'_id': 0, 'id': 1, 'radio_id': 1, 'record': True})
         if not data:
             return
         task = {'id': data['id']}
@@ -101,3 +101,4 @@ class Manager(object):
         self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
 
         return air
+
