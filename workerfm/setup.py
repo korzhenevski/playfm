@@ -13,7 +13,7 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'workerfm = workerfm.cli:main',
+            'workerfm = workerfm.__main__:main',
         ],
     },
 )
