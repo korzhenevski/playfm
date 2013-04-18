@@ -41,7 +41,8 @@ def main():
 
     try:
         logging.info("server running on %s:%d. pid %s", FLAGS.host, FLAGS.port, os.getpid())
-        gevent.spawn(app.service_visit)
+        gevent.spawn(app.drop_offline_channels)
+        gevent.spawn(app.watch_for_updates)
         server.serve_forever()
     except KeyboardInterrupt:
         shutdown()

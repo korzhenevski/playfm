@@ -5,12 +5,12 @@ import os
 import gevent
 import psutil
 import ujson as json
+import logging
 from redis import Redis, RedisError
 from werkzeug.wrappers import Request, Response
 from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.routing import Map, Rule
 from jinja2 import Environment, FileSystemLoader
-from time import time
 
 from .manager import Manager
 from .utils import retry_on_exceptions
@@ -18,10 +18,6 @@ from .utils import retry_on_exceptions
 
 def jsonify(data=None, **kwargs):
     return Response(json.dumps(data or kwargs or {}), mimetype='application/json')
-
-
-def get_ts():
-    return int(time())
 
 
 class Comet(object):
@@ -55,11 +51,11 @@ class Comet(object):
                 'channels': len(self.manager.channels),
                 'clients': clients,
                 'total_clients': total_clients,
-                },
+            },
             'process': {
                 'cpu_percent': self.process.get_cpu_percent(),
                 'memory_percent': self.process.get_memory_percent(),
-                }
+            }
         })
 
     def on_air(self, request, radio_id):
@@ -101,6 +97,7 @@ class Comet(object):
             channel = update['channel']
             try:
                 radio_id = int(channel.split(':')[-2])
+                logging.info('update channel %s', radio_id)
                 self.manager.wakeup_channel(radio_id)
             except ValueError:
                 pass
@@ -130,7 +127,7 @@ class Comet(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-    def service_visit(self):
+    def drop_offline_channels(self):
         while True:
             self.manager.drop_offline_channels()
             gevent.sleep(1)

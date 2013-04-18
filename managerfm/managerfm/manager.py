@@ -65,32 +65,39 @@ class Manager(object):
         self._db.tasks.update({'task_id': task_id}, {'$set': {'heartbeat_at': 0, result_field: data}})
         print task_id, name, data
 
-    def set_radio_title(self, radio_id, title, air_id=None):
+    def onair(self, radio_id, title):
         radio_id = int(radio_id)
         title = unicode(title).strip()
+        title_hash = unicode(fasthash(title))
+        cache_key = 'radio:{}:onair_title'.format(radio_id)
+
+        air_id = self._redis.get('radio:{}:air_id'.format(radio_id))
+
+        if air_id and self._redis.getset(cache_key, title_hash) == title_hash:
+            air = self._redis.hgetall('radio:{}:onair'.format(radio_id))
+            self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
+            return air
+
+        air_id = self.get_next_id('air')
+        self._redis.set('radio:{}:air_id'.format(radio_id), air_id)
+
         ts = int(time())
 
-
-        if air_id is None:
-            air_id = self.get_next_id('air')
-        else:
-            air_id = int(air_id)
-
-        where = {'rid': radio_id, 't': title, 'air_id': air_id, 'ts': {'$gte': ts - 120}}
-        self._db.air.update(where, {
-            '$setOnInsert': {
-                'at': ts,
-                'ts': ts,
-            },
-            '$set': {'ts': ts}
+        self._db.air.insert({
+            'id': air_id,
+            'radio_id': radio_id,
+            'ts': ts,
+            'title': title,
+            'hash': title_hash
         })
 
-        air = {'id': air_id, 'title': title}
+        air = {
+            'id': air_id,
+            'title': title,
+            'ts': ts
+        }
 
         self._redis.hmset('radio:{}:onair'.format(radio_id), air)
         self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
 
         return air
-
-    def set_radio_track(self, radio_id, artist, name):
-        return [radio_id, artist, name]
