@@ -6,19 +6,17 @@ from time import time
 
 
 class StripeWriter(object):
-    def __init__(self, volume, stripe_size=None):
+    def __init__(self):
         self.stripe = None
+        self.stripe_index = 0
+        self.volume = None
+
+    def configure(self, volume, stripe_size=None):
         self.volume = volume
         if stripe_size is None:
             # 64 Mb
             stripe_size = 1024 * 1024 * 64
         self.stripe_size = stripe_size
-        self.stripe_index = 0
-
-    def change_volume(self, volume=None):
-        if volume is not None:
-            self.volume = volume
-        self.new_stripe()
 
     def new_stripe(self):
         self.stripe_index += 1
@@ -48,3 +46,6 @@ class StripeWriter(object):
         # stripe rotate, if exceed size
         if self.stripe_size and self.written >= self.stripe_size:
             self.new_stripe()
+
+    def is_available(self):
+        return self.volume

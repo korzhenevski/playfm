@@ -34,12 +34,6 @@ class Worker(object):
         logging.debug('request_task')
         self.manager.request_task(self.name)
 
-    def run_task(self, task):
-        pass
-
-    def kill_task(self, task_id):
-        pass
-
 
 class VolumeMonitor(object):
     def __init__(self, basepath, manager):
@@ -67,6 +61,7 @@ class VolumeMonitor(object):
 class WorkerThread(object):
     def __init__(self, parent):
         self.parent = parent
+        self.writer = StripeWriter()
 
     def run(self, url):
         self.radio = RadioClient(url)
@@ -76,6 +71,12 @@ class WorkerThread(object):
 
         while self.running:
             chunk, meta = self.radio.read()
+
+    def enable_write(self, volume, stripe_size):
+        self.writer.configure(volume, stripe_size)
+        
+    def disable_write(self):
+        self.writer.close()
 
     def kill(self):
         self.running = False
