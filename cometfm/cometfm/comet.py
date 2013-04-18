@@ -34,14 +34,33 @@ class Comet(object):
                                      autoescape=True)
         self.url_map = Map([
             Rule('/', endpoint='frame'),
-            Rule('/onair/<int:radio_id>', endpoint='air'),
             Rule('/stats', endpoint='stats'),
+            Rule('/onair/<int:radio_id>', endpoint='air'),
         ])
 
         self.process = psutil.Process(os.getpid())
 
     def on_frame(self, request):
         return self.render_template('frame.html')
+
+    def on_stats(self, request):
+        total_clients = 0
+        clients = {}
+        for name, channel in self.manager.channels.iteritems():
+            clients[name] = channel.clients_count
+            total_clients += channel.clients_count
+
+        return jsonify({
+            'realtime': {
+                'channels': len(self.manager.channels),
+                'clients': clients,
+                'total_clients': total_clients,
+                },
+            'process': {
+                'cpu_percent': self.process.get_cpu_percent(),
+                'memory_percent': self.process.get_memory_percent(),
+                }
+        })
 
     def on_air(self, request, radio_id):
         if radio_id >= 10 ** 9:
@@ -58,33 +77,15 @@ class Comet(object):
 
         try:
             user_id = abs(request.args.get('uid', type=int, default=0))
-            info = self.get_onair(radio_id)
+            air = self.get_onair(radio_id)
 
-            if user_id and info.get('id'):
+            if user_id and air.get('id'):
                 cache_key = 'user:{}:onair_likes'.format(user_id)
-                info['liked'] = bool(self.redis.zscore(cache_key, info['id']))
-            return jsonify(info=info)
+                air['liked'] = bool(self.redis.zscore(cache_key, air['id']))
+
+            return jsonify(onair=air)
         except RedisError:
             return Response('', status=503, mimetype='application/json')
-
-    def on_stats(self, request):
-        total_clients = 0
-        clients = {}
-        for name, channel in self.manager.channels.iteritems():
-            clients[name] = channel.clients_count
-            total_clients += channel.clients_count
-
-        return jsonify({
-            'realtime': {
-                'channels': len(self.manager.channels),
-                'clients': clients,
-                'total_clients': total_clients,
-            },
-            'process': {
-                'cpu_percent': self.process.get_cpu_percent(),
-                'memory_percent': self.process.get_memory_percent(),
-            }
-        })
 
     @retry_on_exceptions([RedisError])
     def get_onair(self, radio_id):
