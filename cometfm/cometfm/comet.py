@@ -33,15 +33,15 @@ class Comet(object):
         self.jinja_env = Environment(loader=FileSystemLoader(template_path),
                                      autoescape=True)
         self.url_map = Map([
-            Rule('/loader', endpoint='loader'),
+            Rule('/', endpoint='frame'),
             Rule('/onair/<int:radio_id>', endpoint='air'),
             Rule('/stats', endpoint='stats'),
         ])
 
         self.process = psutil.Process(os.getpid())
 
-    def on_loader(self, request):
-        return self.render_template('loader.html')
+    def on_frame(self, request):
+        return self.render_template('frame.html')
 
     def on_air(self, request, radio_id):
         if radio_id >= 10 ** 9:
