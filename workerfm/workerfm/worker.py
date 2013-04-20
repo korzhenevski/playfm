@@ -2,17 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import gevent
-import zerorpc
-import zerorpc.exceptions
-import os
-import psutil
-from gevent.pool import Pool
-from gevent.queue import Queue
-from .radio import RadioClient
-from .writer import StripeWriter
 import logging
 import socket
 import uuid
+import os
+import psutil
+from gevent.pool import Pool
+from .radio import RadioClient
+from .writer import StripeWriter
 
 
 class Worker(object):
@@ -74,7 +71,7 @@ class WorkerThread(object):
 
     def enable_write(self, volume, stripe_size):
         self.writer.configure(volume, stripe_size)
-        
+
     def disable_write(self):
         self.writer.close()
 
