@@ -8,14 +8,15 @@ import gflags
 import zerorpc
 import sys
 import logging
-from .worker import Worker, VolumeMonitor
+from .worker import Worker
 from pprint import pprint as pp
 from time import time
 
 FLAGS = gflags.FLAGS
 gflags.DEFINE_string('manager', 'tcp://127.0.0.1:4242', 'Manager ZMQ address')
-gflags.DEFINE_string('volumes', '/tmp/record', 'Storage volumes location')
+gflags.DEFINE_string('record_to', '/tmp/record', 'Record files path')
 gflags.DEFINE_integer('threads', 1, 'Max worker task threads')
+
 
 def main():
     try:
@@ -27,11 +28,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
     manager = zerorpc.Client(FLAGS.manager)
-    worker = Worker(manager)
-    volume_monitor = VolumeMonitor(FLAGS.volumes, manager)
+    worker = Worker(manager, FLAGS.record_to)
     gevent.joinall([
         gevent.spawn(worker.run, pool_size=FLAGS.threads),
-        gevent.spawn(volume_monitor.monitor)
     ])
 
 if __name__ == '__main__':

@@ -127,9 +127,16 @@ class Comet(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-    def drop_offline_channels(self):
+    @retry_on_exceptions([RedisError])
+    def update_stats(self):
+        # TODO: add zset expire
+        for name, channel in self.manager.channels.iteritems():
+            self.redis.zadd('radio:clients', name, channel.clients_count)
+
+    def service_visit(self):
         while True:
             self.manager.drop_offline_channels()
+            self.update_stats()
             gevent.sleep(1)
 
 

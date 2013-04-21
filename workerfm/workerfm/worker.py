@@ -5,18 +5,17 @@ import gevent
 import logging
 import socket
 import uuid
-import os
-import psutil
 from gevent.pool import Pool
 from .radio import RadioClient
 from .writer import StripeWriter
 
 
 class Worker(object):
-    def __init__(self, manager):
+    def __init__(self, manager, record_to):
         self.manager = manager
         self.name = '{}:{}'.format(socket.gethostname(), uuid.uuid4())
         self.tasks = {}
+        self.record_to = record_to
 
     def run(self, pool_size):
         self.pool = Pool(size=pool_size)
@@ -24,57 +23,53 @@ class Worker(object):
             self.pool.wait_available()
             task = self.request_task()
             if task:
-                print task
+                self.run_task(task)
             gevent.sleep(1)
 
     def request_task(self):
         logging.debug('request_task')
-        self.manager.request_task(self.name)
+        return self.manager.request_task(self.name)
 
+    def run_task(self, task):
+        thread = WorkerThread(worker=self, manager=self.manager)
+        self.pool.spawn(thread.run, task)
+        self.tasks[task['_id']] = thread
 
-class VolumeMonitor(object):
-    def __init__(self, basepath, manager):
-        self.basepath = basepath
-        self.manager = manager
-
-    def get_volumes(self):
-        volumes = [os.path.join(self.basepath, vol) for vol in os.listdir(self.basepath)]
-        volumes = [vol for vol in volumes if os.path.isdir(vol)]
-        return volumes
-
-    def get_volume_usage(self, path):
-        return dict(psutil.disk_usage(path).__dict__)
-
-    def monitor(self):
-        while True:
-            volume_usage = dict([(vol, self.get_volume_usage(vol)) for vol in self.get_volumes()])
-            print self.manager.track_volume_usage({
-                'hostname': socket.gethostname(),
-                'usage': volume_usage
-            })
-            gevent.sleep(10)
+    def stop_task(self, task_id):
+        if task_id in self.tasks:
+            self.tasks[task_id].stop()
+            self.tasks.pop(task_id)
 
 
 class WorkerThread(object):
-    def __init__(self, parent):
-        self.parent = parent
-        self.writer = StripeWriter()
+    def __init__(self, worker, manager):
+        self.worker = worker
+        self.manager = manager
 
-    def run(self, url):
+    def run(self, task):
+        while True:
+            streams = self.manager.get_streams(task['radio_id'])
+            if not streams:
+                break
+            url = streams[0]
+            self.loop(url)
+
+    def loop(self, url):
         self.radio = RadioClient(url)
 
         self.radio.connect()
         self.running = True
 
+        meta = None
+
         while self.running:
-            chunk, meta = self.radio.read()
+            chunk, current_meta = self.radio.read()
 
-    def enable_write(self, volume, stripe_size):
-        self.writer.configure(volume, stripe_size)
+            if meta != current_meta:
+                meta = current_meta
+                print meta
 
-    def disable_write(self):
-        self.writer.close()
 
-    def kill(self):
+    def stop(self):
         self.running = False
         self.radio.close()
