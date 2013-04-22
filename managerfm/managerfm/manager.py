@@ -4,6 +4,11 @@
 import logging
 import ujson as json
 from .utils import parse_stream_title, get_ts, fasthash
+from pprint import pprint as pp
+from datetime import datetime
+
+def from_ts(ts):
+    return datetime.fromtimestamp(ts)
 
 class Manager(object):
     def __init__(self, db, redis):
@@ -21,6 +26,18 @@ class Manager(object):
         return self._db.streams.find_one(where, fields={'_id': 0, 'id': 1, 'url': 1, 'bitrate': 1},
                                          sort=[('bitrate', 1)])
 
+    def get_radio_record(self, radio_id):
+        items = self._db.radio_record.find({'radio_id': int(radio_id)}, fields=['stripe_id', 'ts', 'at', 'air_id'])
+        records = []
+        for item in items:
+            records.append({
+                'title': self._db.air.find_one({'id': int(item['air_id'])})['title'],
+                'at': from_ts(item['at']).strftime('%Y-%m-%d %H:%M:%S'),
+                'ts': from_ts(item['ts']).strftime('%Y-%m-%d %H:%M:%S'),
+                'stripe_id': item['stripe_id']
+            })
+        return records
+
     def put_radio(self, radio_id):
         task = {
             '_id': self.get_next_id('radio_queue'),
@@ -31,10 +48,13 @@ class Manager(object):
         self._rq.insert(task)
         return task
 
-    def delete_radio(self, radio_id):
-        self._rq.update({'radio_id': int(radio_id), 'deleted_at': 0}, {'$set': {'deleted_at': get_ts()}})
+    def delete_radio(self, radio_id=None):
+        where = {'deleted_at': 0}
+        if radio_id:
+            where['radio_id'] = int(radio_id)
+        self._rq.update(where, {'$set': {'deleted_at': get_ts()}})
 
-    def reserve_task(self, worker_id):
+    def task_reserve(self, worker_id):
         """ reserve task for worker """
         ts = get_ts()
 
@@ -56,7 +76,7 @@ class Manager(object):
 
         return task
 
-    def touch_task(self, task_id):
+    def task_touch(self, task_id):
         task = self._rq.find_one({'_id': int(task_id), 'deleted_at': 0}, fields=['radio_id'])
         if not task:
             return 404
@@ -64,7 +84,23 @@ class Manager(object):
         self._rq.update({'_id': int(task_id)}, {'$set': {'touch_at': get_ts()}})
         return True
 
-    def update_task_meta(self, task_id, meta):
+    def task_stripe_commit(self, task_id, commit):
+        update = {
+            '$setOnInsert': {
+                'at': get_ts(),
+                'air_id': int(commit['air_id']),
+                'radio_id': commit['radio_id'],
+                'stream_id': commit['stream_id'],
+            },
+            '$set': {
+                'offset': commit['offset'],
+                'ts': get_ts()
+            }
+        }
+        self._db.radio_record.update({'stripe_id': commit['stripe'], 'task_id': int(task_id)}, update, upsert=True)
+        pp([task_id, commit])
+
+    def task_update_meta(self, task_id, meta):
         task = self._rq.find_one({'_id': int(task_id), 'deleted_at': 0}, fields=['radio_id'])
         if not task:
             logging.debug('no task')

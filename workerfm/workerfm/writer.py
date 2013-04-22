@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import os
+import errno
 from time import time
+from bson.objectid import ObjectId
 
 
 class StripeWriter(object):
@@ -14,22 +16,30 @@ class StripeWriter(object):
     def configure(self, volume, stripe_size=None):
         self.volume = volume
         if stripe_size is None:
-            # 64 Mb
-            stripe_size = 1024 * 1024 * 64
+            # 256 Mb ~ 5 hours of 320 kbps stream
+            stripe_size = 256 * 1024 * 1024
         self.stripe_size = stripe_size
 
     def new_stripe(self):
         self.stripe_index += 1
-        self.written = 0
+        self.offset = 0
 
-        name = str(int(round(time() * 1000)))
+        name = str(int(round(time() * 10000)))
         self.name = '{}_{}'.format(name, self.stripe_index)
 
-        # build scheme: /<volume_path>/<last_name_letter>/<last_2_name_letters>/<name_with_rotate_index>
-        self.path = os.path.join(self.volume, name[-1:], name[-3:-1], self.name)
-        os.makedirs(os.path.dirname(self.path))
+        # build scheme: /<volume_path>/<last_name_letter>/<last_2_name_letters>
+        self.path = os.path.join(self.volume, name[-1:], name[-3:-1])
+        self._makedir(self.path)
+        self.stripe = open(os.path.join(self.path, name), 'a', buffering=0)
 
-        self.stripe = open(self.path, 'a', buffering=0)
+    def _makedir(self, path):
+        if os.path.exists(path):
+            return
+        try:
+            os.makedirs(path)
+        except OSError as exc:
+            if exc.errno == errno.EEXIST and os.path.isdir(path):
+                pass
 
     def close(self):
         if self.stripe:
@@ -41,11 +51,10 @@ class StripeWriter(object):
     def write(self, data):
         if not self.stripe:
             self.new_stripe()
-        self.stripe.write(data)
-        self.written += len(data)
+
         # stripe rotate, if exceed size
-        if self.stripe_size and self.written >= self.stripe_size:
+        if self.stripe_size and self.offset >= self.stripe_size:
             self.new_stripe()
 
-    def is_available(self):
-        return self.volume
+        self.stripe.write(data)
+        self.offset += len(data)
