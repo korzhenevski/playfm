@@ -67,7 +67,9 @@ class Comet(object):
         if timeout >= 60:
             timeout = 60
 
-        if timeout:
+        # first request without wait
+        request_counter = request.headers.get('x-counter', type=int, default=0)
+        if timeout and request_counter != 1:
             channel = self.manager.get_channel(radio_id)
             channel.wait(timeout)
 

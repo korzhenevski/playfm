@@ -112,6 +112,7 @@ var Comet = {
 
         xhr.open('GET', url, true);
         xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        xhr.setRequestHeader('X-Counter', '' + this._counter);
         xhr.onreadystatechange = function () {
             if (!self._xhr || xhr.readyState != 4) {
                 return;
@@ -130,6 +131,7 @@ var Comet = {
 
         xhr.send(null);
 
+        this._counter += 1;
         this._xhr = xhr;
         this._prevReqTime = +(new Date());
     },
@@ -141,13 +143,13 @@ var Comet = {
     execute: function (url, callback) {
         this.url = url || false;
         this.callback = callback || false;
+        this._prevReqTime = null;
+        this._counter = 1;
 
-        var self = this;
         if (this._xhr) {
             var xhr = this._xhr;
             this._xhr = null;
-            xhr.onreadystatechange = function () {
-            };
+            xhr.onreadystatechange = function() {};
             xhr.abort();  // abort() does not make bounce if this._lastXmlhttp is null
         }
 
@@ -197,8 +199,7 @@ var Comet = {
                     self._xhr.abort();
                     self._xhr = null;
                 }
-            } catch (e) {
-            }
+            } catch (e) {}
         };
 
         this._prepared = true;
