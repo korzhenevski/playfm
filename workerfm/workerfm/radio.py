@@ -9,7 +9,7 @@ from .errors import TooManyRedirects, ConnectionError, HttpError, InvalidMetaint
 
 
 class RadioClient(object):
-    def __init__(self, url, timeout=5, user_agent=None, **kwargs):
+    def __init__(self, url, timeout=5, user_agent=None):
         self.url = url
         self.timeout = timeout
         if user_agent is None:
@@ -36,7 +36,8 @@ class RadioClient(object):
                 raise ConnectionError(unicode(exc))
 
             self.send_request(url.hostname, url.path)
-            self.parse_headers()
+            if not self.parse_headers():
+                raise HttpError('parse headers failed')
 
             if self.status_code in (301, 302, 303, 307):
                 location = self.headers.get('location')
@@ -76,13 +77,14 @@ class RadioClient(object):
         headers = [header.split(':', 1) for header in headers[1:]]
         # lowercase/strip keys and values
         self.headers = dict([(name.strip().lower(), val.strip()) for name, val in headers])
+        return True
 
     def read_stream(self, amt):
         s = StringIO()
         while amt > 0:
             if not self.stream:
                 return
-            chunk = self.stream.recv(min(amt, 1024 * 128))
+            chunk = self.stream.recv(min(amt, 1024 * 64))
             if not chunk:
                 break
             s.write(chunk)
@@ -90,12 +92,12 @@ class RadioClient(object):
         return s.getvalue()
 
     def _validate_response(self):
-        content_type = self.headers.get('content-type', '')
-        if not (content_type.startswith('audio/') or content_type == 'application/octet-stream'):
-            raise InvalidContentType()
+        #content_type = self.headers.get('content-type', '')
+        #if not (content_type.startswith('audio/') or content_type == 'application/octet-stream'):
+        #    raise InvalidContentType(content_type)
 
         try:
-            metaint = int(self.headers.get('icy-metaint'))
+            metaint = int(self.headers.get('icy-metaint', 0))
             if 1024 < metaint < 64 * 1024:
                 self.metaint = metaint
             else:
