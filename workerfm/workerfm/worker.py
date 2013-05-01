@@ -15,10 +15,7 @@ from .radio import RadioClient
 from .writer import StripeWriter
 from time import time
 import psutil
-from zlib import crc32
 
-def fasthash(data):
-    return crc32(data) & 0xffffffff
 
 class Worker(object):
     def __init__(self, manager, record_to):
@@ -30,6 +27,7 @@ class Worker(object):
 
     def run(self, pool_size):
         self.pool = Pool(size=pool_size)
+        logging.info('start worker pool: %s', pool_size)
         while True:
             self.pool.wait_available()
             #logging.debug('mem: %s, cpu: %s', self.stats.get_memory_percent(), self.stats.get_cpu_percent())
@@ -39,13 +37,14 @@ class Worker(object):
             gevent.sleep(1)
 
     def reserve_task(self):
-        #logging.debug('reserve_task')
         return self.manager.task_reserve(self.name)
 
     def run_task(self, task):
-        thread = Radio(task=task, manager=self.manager)
-        self.pool.spawn(thread.run)
-        self.tasks[task['id']] = thread
+        logging.info('run task: %s', task)
+        radio = Radio(task['id'], stream_url=task['stream']['url'], writer=task.get('w'))
+        radio.manager = self.manager
+        self.pool.spawn(radio.run)
+        self.tasks[task['id']] = radio
 
     def stop_task(self, task_id):
         if task_id in self.tasks:
@@ -56,77 +55,88 @@ class Worker(object):
 class Radio(object):
     radio_client_class = RadioClient
 
-    def __init__(self, task, manager):
-        self.task = task
-        self.manager = manager
+    def __init__(self, task_id, stream_url, writer=None):
+        self.task_id = task_id
+        self.stream_url = stream_url
 
         self.writer = None
-        if 'w' in task:
-            self.writer = StripeWriter(task['w']['volume'], task['w']['stripe_size'])
+        if writer:
+            self.writer = StripeWriter(writer['volume'], writer['stripe_size'])
 
-        self.stats = psutil.Process(os.getpid())
+        self.meta = None
+        self.manager = None
+        self.air_id = -1
+        self.last_touch = 0
 
     def run(self):
-        # привязка меты и дампа к task_id
-        # 3 реконнекта на всякий пожарный 1 2 4
-        self.radio = self.radio_client_class(self.task['stream']['url'])
+        self.radio = self.radio_client_class(self.stream_url)
         self.radio.connect()
-
-        self.writer.new_stripe()
-
         self.running = True
-        self.meta = None
-        self.air_id = None
-        self.last_touch = 0
 
         while self.running:
             chunk, meta = self.radio.read()
+            meta_changed = self.log_meta(meta)
 
-            self.update_meta(meta)
+            if meta_changed:
+                logging.info('meta (air_id %s): %s', self.air_id, self.meta)
 
             if self.writer:
+                if meta_changed or self.writer.need_rotate():
+                    self.new_stripe()
                 self.writer.write(chunk)
 
             self.touch_task()
+            gevent.sleep(0)
 
-    def update_meta(self, meta):
+    def new_stripe(self):
+        self.writer.new_stripe()
+        self.manager.task_log_stripe(self.task_id, {
+            'air_id': self.air_id,
+            'offset': 0,
+            'name': self.writer.name,
+        })
+
+    def log_meta(self, meta):
         if not meta.lower().startswith('streamtitle'):
             return
-
         if self.meta == meta:
             return
 
         self.meta = meta
-
         update = {
             'meta': self.meta,
             'ts': int(time()),
-            'last_id': self.air_id
+            'prev_id': self.air_id
         }
 
-        if self.writer:
-            update['w'] = self.get_writer_info()
+        logging.info('update meta: %s', update)
 
-        self.air_id = self.manager.task_update_meta(self.task['id'], update)['air_id']
+        status = self.manager.task_log_meta(self.task_id, update)
+
+        # check air_id change
+        prev_air_id = self.air_id
+        self.air_id = status['air_id']
+        return self.air_id != prev_air_id
 
     def touch_task(self, interval=5):
+        # throttle calls
         if self.last_touch > time() - interval:
             return
         self.last_touch = time()
 
-        update = {
+        runtime = {
             'air_id': self.air_id,
             'ts': int(time()),
         }
         if self.writer:
-            update['w'] = self.get_writer_info()
+            runtime['w'] = self.get_writer_info()
+        #logging.info('task touch: %s', runtime)
 
-        status = self.manager.task_touch(self.task['id'], update)
+        status = self.manager.task_touch(self.task_id, runtime)
+
         if status['code'] != 200:
             logging.info('stop %s', status['code'])
             self.stop()
-
-        print ('mem: %s, cpu: %s', self.stats.get_memory_percent(), self.stats.get_cpu_percent())
 
     def get_writer_info(self):
         return {
@@ -138,10 +148,14 @@ class Radio(object):
         self.running = False
         self.radio.close()
 
+
 if __name__ == '__main__':
     from pprint import pprint as pp
-    from gevent.pool import Pool
     from mock import Mock
+    from zlib import crc32
+
+    def fasthash(data):
+        return crc32(data) & 0xffffffff
 
     manager = Mock()
     manager.task_touch.return_value = {'code': 200}
@@ -149,19 +163,17 @@ if __name__ == '__main__':
 
     def get_task(url):
         task = {
-            'id': fasthash(url),
-            'stream': {
-                'url': url,
-                'id': fasthash(url + 'stream')
-            },
-            'w': {
+            'task_id': fasthash(url),
+            'stream_url': url,
+            'writer': {
                 'volume': '/tmp/recorder',
                 'stripe_size': 1024 * 1024
             }
         }
         return task
 
-    r = Radio(get_task('http://fr2.ah.fm:9000/'), manager)
+    r = Radio(**get_task('http://fr2.ah.fm:9000/'))
+    r.manager = manager
     r.run()
 
     print 'exit'

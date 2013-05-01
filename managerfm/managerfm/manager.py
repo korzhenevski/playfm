@@ -11,6 +11,14 @@ from datetime import datetime
 def from_ts(ts):
     return datetime.fromtimestamp(ts)
 
+# разобратся с "catching up after missing event"
+# реконнект при потере связи
+# новый страйп - уведомим менеджера
+# стата из task_touch - в текущую запись
+
+# http://ester.againfm.dev/record/<radio_id>/<air_id>.mp3
+# http://ester.againfm.dev/record/<radio_id><air_id><ip_limit>.mp3
+# http://ester.againfm.dev/record/<radio_id>/<start_air_id>-<end_air_id>.mp3
 
 class Manager(object):
     def __init__(self, db, redis):
@@ -27,6 +35,15 @@ class Manager(object):
         where = {'radio_id': int(radio_id), 'deleted_at': 0, 'is_online': True}
         return self._db.streams.find_one(where, fields={'_id': 0, 'id': 1, 'url': 1, 'bitrate': 1},
                                          sort=[('bitrate', 1)])
+
+    def get_record_url(self, air_id):
+        urls = {}
+        for stripe in self._db.records.find({'air_id': int(air_id)}):
+            name = stripe['name']
+            base = 'http://ester.againfm.dev'
+            url = '{}/record/{}/{}/{}?start={}'.format(base, name[-1], name[-3:-1], name, stripe['offset'])
+            urls[stripe['ts']] = url
+        return urls
 
     def get_radio_record(self, radio_id):
         items = self._db.radio_record.find({'radio_id': int(radio_id)}, fields=['stripe_id', 'ts', 'at', 'air_id'])
@@ -60,7 +77,7 @@ class Manager(object):
         """ reserve task for worker """
         ts = get_ts()
 
-        where = {'touch_at': {'$lte': ts - 10}, 'deleted_at': 0}
+        where = {'touch_at': {'$lte': ts - 10}, 'deleted_at': 0, 'radio_id': 917}
         update = {'touch_at': ts, 'worker': worker_id}
         task = self._rq.find_and_modify(where, {'$set': update}, fields=['_id', 'radio_id'], new=True)
 
@@ -74,55 +91,62 @@ class Manager(object):
 
         task['id'] = task.pop('_id')
         task['stream'] = stream
+
+        # Stripe params
+        task['w'] = {
+            'volume': '/tmp/records',
+            'stripe_size': 1024 * 1024 * 32,
+        }
         logging.info('task %s reserved to worker %s', task['id'], worker_id)
 
         return task
 
-    def task_touch(self, task_id):
+    def task_touch(self, task_id, runtime):
         task = self._rq.find_one({'_id': int(task_id), 'deleted_at': 0}, fields=['radio_id'])
         if not task:
-            return 404
+            return {'code': 404}
 
-        self._rq.update({'_id': int(task_id)}, {'$set': {'touch_at': get_ts()}})
-        return True
+        self._rq.update({'_id': int(task_id)}, {'$set': {'touch_at': get_ts(), 'runtime': runtime}})
+        return {'code': 200}
 
-    def task_stripe_commit(self, task_id, commit):
-        update = {
-            '$setOnInsert': {
-                'at': get_ts(),
-                'air_id': int(commit['air_id']),
-                'radio_id': commit['radio_id'],
-                'stream_id': commit['stream_id'],
-            },
-            '$set': {
-                'offset': commit['offset'],
-                'ts': get_ts()
-            }
-        }
-        self._db.radio_record.update({'stripe_id': commit['stripe'], 'task_id': int(task_id)}, update, upsert=True)
-        pp([task_id, commit])
+    def task_log_meta(self, task_id, data):
+        task_id = int(task_id)
 
-    def task_update_meta(self, task_id, meta):
-        task = self._rq.find_one({'_id': int(task_id), 'deleted_at': 0}, fields=['radio_id'])
+        task = self._rq.find_one({'_id': task_id, 'deleted_at': 0}, fields=['radio_id'])
         if not task:
             logging.debug('no task')
             return
 
-        stream_title = parse_stream_title(meta)
+        stream_title = parse_stream_title(data['meta'])
         if not stream_title:
-            logging.debug('invalid meta')
-            return
+            stream_title = ''
 
-        air = self.track_onair(task['radio_id'], stream_title)
-        print air
-        return air['id']
+        air = self.track_onair(task['radio_id'], stream_title, prev_id=data['prev_id'])
+        air_id = int(air['id'])
 
-    def track_onair(self, radio_id, title):
+        return {'air_id': air_id}
+
+    def task_log_stripe(self, task_id, update):
+        logging.info('stripe update (task %s): %s', task_id, update)
+        record = {
+            '$set': {
+                'task_id': int(task_id),
+                'offset': int(update['offset']),
+                'ts': get_ts()
+            }
+        }
+        self._db.records.update({'air_id': int(update['air_id']), 'name': update['name']}, record, upsert=True)
+
+
+    def track_onair(self, radio_id, title, prev_id=-1):
         radio_id = int(radio_id)
+        prev_id = int(prev_id)
+
         air_id = self._redis.get('radio:{}:air_id'.format(radio_id))
 
         title = title.strip()
         title_hash = fasthash(title)
+
         previous_title_hash = self._redis.getset('radio:{}:onair_title'.format(radio_id), title_hash)
         if air_id and previous_title_hash == title_hash:
             logging.debug('repeated title')
@@ -139,20 +163,21 @@ class Manager(object):
             'radio_id': radio_id,
             'ts': ts,
             'title': title,
-            'hash': title_hash
+            'hash': title_hash,
+            'prev_id': prev_id
         })
 
         air = {
             'id': air_id,
             'title': title,
-            'ts': ts
+            'ts': ts,
+            'prev_id': prev_id
         }
 
         self._redis.hmset('radio:{}:onair'.format(radio_id), air)
         self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
 
         logging.debug('new title')
-
         return air
 
     def get_free_volumes(self, hostname, usage_limit=90):

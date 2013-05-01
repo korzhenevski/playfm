@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from gevent.monkey import patch_all
+patch_all()
 
 import zerorpc
 import gflags
@@ -27,7 +29,7 @@ def main():
 
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
-    db = MongoClient(host=FLAGS.mongo)[FLAGS.mongo_db]
+    db = MongoClient(host=FLAGS.mongo, use_greenlets=True)[FLAGS.mongo_db]
     redis = Redis(host=FLAGS.redis, db=FLAGS.redis_db)
     manager = Manager(db, redis)
 
