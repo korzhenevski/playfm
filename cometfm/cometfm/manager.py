@@ -4,6 +4,7 @@
 from time import time
 from gevent.event import Event
 
+
 class Manager(object):
     def __init__(self):
         self.channels = {}
@@ -32,12 +33,13 @@ class Manager(object):
         for name in drop_list:
             self.channels.pop(name)
 
-    def count_clients(self):
-        count = 0
-        for channel in self.channels.itervalues():
-            count += channel.clients_count
-        return count
-
+    def get_stats(self, min_clients=None):
+        stats = {}
+        for name, channel in self.channels.iteritems():
+            if min_clients is not None and channel.clients_count < min_clients:
+                continue
+            stats[name] = channel.clients_count
+        return stats
 
 class Channel(Event):
     def __init__(self, name, manager):
@@ -59,8 +61,6 @@ if __name__ == '__main__':
     manager = Manager()
     assert manager.get_channel('chan') == manager.get_channel('chan')
     assert len(manager.channels) == 1
-
-    assert manager.count_clients() == 0
 
     manager.drop_offline_channels(10)
     assert len(manager.channels) == 0

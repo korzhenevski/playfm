@@ -24,14 +24,16 @@ class Comet(object):
     def __init__(self, config):
         self.redis = Redis(host=config['redis_host'], db=config['redis_db'])
         self.manager = Manager()
+        self.onair_cache = {}
 
         template_path = os.path.join(os.path.dirname(__file__), 'templates')
         self.jinja_env = Environment(loader=FileSystemLoader(template_path),
                                      autoescape=True)
         self.url_map = Map([
             Rule('/', endpoint='frame'),
-            Rule('/stats', endpoint='stats'),
             Rule('/onair/<int:radio_id>', endpoint='air'),
+            Rule('/info', endpoint='info'),
+            Rule('/stats', endpoint='stats'),
         ])
 
         self.process = psutil.Process(os.getpid())
@@ -39,7 +41,7 @@ class Comet(object):
     def on_frame(self, request):
         return self.render_template('frame.html')
 
-    def on_stats(self, request):
+    def on_info(self, request):
         total_clients = 0
         clients = {}
         for name, channel in self.manager.channels.iteritems():
@@ -52,11 +54,17 @@ class Comet(object):
                 'clients': clients,
                 'total_clients': total_clients,
             },
+            'onair_cache_size': len(self.onair_cache),
             'process': {
                 'cpu_percent': self.process.get_cpu_percent(),
                 'memory_percent': self.process.get_memory_percent(),
             }
         })
+
+    def on_stats(self, request):
+        min_clients = request.args.get('clients', type=int)
+        stats = self.manager.get_stats(min_clients)
+        return jsonify({'stats': stats})
 
     def on_air(self, request, radio_id):
         if radio_id >= 10 ** 9:
@@ -87,8 +95,10 @@ class Comet(object):
 
     @retry_on_exceptions([RedisError])
     def get_onair(self, radio_id):
-        # TODO: add LRU caching
-        return self.redis.hgetall('radio:{}:onair'.format(radio_id))
+        if radio_id not in self.onair_cache:
+            info = self.redis.hgetall('radio:{}:onair'.format(radio_id))
+            self.onair_cache[radio_id] = info
+        return self.onair_cache[radio_id]
 
     @retry_on_exceptions([RedisError])
     def watch_for_updates(self):
@@ -100,6 +110,7 @@ class Comet(object):
             try:
                 radio_id = int(channel.split(':')[-2])
                 logging.info('update channel %s', radio_id)
+                self.onair_cache[radio_id] = json.loads(update['data'])
                 self.manager.wakeup_channel(radio_id)
             except ValueError:
                 pass
@@ -129,17 +140,10 @@ class Comet(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-    @retry_on_exceptions([RedisError])
-    def update_stats(self):
-        # TODO: add zset expire
-        for name, channel in self.manager.channels.iteritems():
-            self.redis.zadd('radio:clients', name, channel.clients_count)
-
     def service_visit(self):
         while True:
             self.manager.drop_offline_channels()
-            self.update_stats()
-            gevent.sleep(1)
+            gevent.sleep(25)
 
 
 def create_app(redis_host='127.0.0.1', redis_db=0):

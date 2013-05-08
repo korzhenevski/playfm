@@ -15,9 +15,9 @@ from gevent.wsgi import WSGIServer
 from .comet import create_app
 
 FLAGS = gflags.FLAGS
-gflags.DEFINE_string('redis', '127.0.0.1', 'Redis host')
+gflags.DEFINE_string('redis', 'afm', 'Redis host')
 gflags.DEFINE_integer('redis_db', 0, 'Redis database')
-gflags.DEFINE_string('host', '127.0.0.1', 'Server host')
+gflags.DEFINE_string('host', '0.0.0.0', 'Server host')
 gflags.DEFINE_integer('port', 6000, 'Server port')
 gflags.DEFINE_integer('maxconn', 10000, 'Max connection limit')
 

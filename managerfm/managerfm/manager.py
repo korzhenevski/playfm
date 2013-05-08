@@ -58,9 +58,15 @@ class Manager(object):
         return records
 
     def put_radio(self, radio_id):
+        radio_id = int(radio_id)
+
+        task = self._rq.find_one({'radio_id': radio_id, 'deleted_at': 0})
+        if task:
+            return task
+
         task = {
             '_id': self.get_next_id('radio_queue'),
-            'radio_id': int(radio_id),
+            'radio_id': radio_id,
             'touch_at': 0,
             'deleted_at': 0
         }
@@ -77,7 +83,7 @@ class Manager(object):
         """ reserve task for worker """
         ts = get_ts()
 
-        where = {'touch_at': {'$lte': ts - 10}, 'deleted_at': 0, 'radio_id': 917}
+        where = {'touch_at': {'$lte': ts - 10}, 'deleted_at': 0}
         update = {'touch_at': ts, 'worker': worker_id}
         task = self._rq.find_and_modify(where, {'$set': update}, fields=['_id', 'radio_id'], new=True)
 
@@ -93,10 +99,10 @@ class Manager(object):
         task['stream'] = stream
 
         # Stripe params
-        task['w'] = {
-            'volume': '/tmp/records',
-            'stripe_size': 1024 * 1024 * 32,
-        }
+        #task['w'] = {
+        #    'volume': '/tmp/records',
+        #    'stripe_size': 1024 * 1024 * 32,
+        #}
         logging.info('task %s reserved to worker %s', task['id'], worker_id)
 
         return task
@@ -137,7 +143,6 @@ class Manager(object):
         }
         self._db.records.update({'air_id': int(update['air_id']), 'name': update['name']}, record, upsert=True)
 
-
     def track_onair(self, radio_id, title, prev_id=-1):
         radio_id = int(radio_id)
         prev_id = int(prev_id)
@@ -166,6 +171,9 @@ class Manager(object):
             'hash': title_hash,
             'prev_id': prev_id
         })
+
+        if prev_id > 0:
+            self._db.air.update({'id': prev_id}, {'$set': {'end': get_ts()}})
 
         air = {
             'id': air_id,

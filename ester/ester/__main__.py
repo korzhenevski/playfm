@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from gevent.monkey import patch_all
+patch_all()
 
+import gevent
 import gflags
-import sys
+import zerorpc
 import logging
-from pymongo.mongo_client import MongoClient
+import sys
+from .ester import Ester
 
 FLAGS = gflags.FLAGS
-gflags.DEFINE_string('mongo', 'afm', 'MongoDB host')
-gflags.DEFINE_string('mongo_db', 'againfm', 'MongoDB name')
+gflags.DEFINE_string('manager', 'tcp://127.0.0.1:4242', 'Manager endpoint')
 
 
 def main():
@@ -18,9 +21,15 @@ def main():
         print '%s\nUsage: %s ARGS\n%s' % (e, sys.argv[0], FLAGS)
         sys.exit(1)
 
-    db = MongoClient(host=FLAGS.mongo)[FLAGS.mongo_db]
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
-    print db
+    manager = zerorpc.Client(FLAGS.manager)
+    ester = Ester(manager)
+
+    gevent.joinall([
+        gevent.spawn(ester.scheduler)
+    ])
+
 
 if __name__ == '__main__':
     main()
