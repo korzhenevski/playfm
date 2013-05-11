@@ -5,7 +5,7 @@ import socket
 from urlparse import urlparse, urljoin
 from cStringIO import StringIO
 
-from .errors import TooManyRedirects, ConnectionError, HttpError, InvalidMetaint, InvalidContentType
+from .errors import TooManyRedirects, ConnectionError, HttpError, InvalidMetaint, ReadError
 
 
 class RadioClient(object):
@@ -83,7 +83,7 @@ class RadioClient(object):
         s = StringIO()
         while amt > 0:
             if not self.stream:
-                return
+                raise ReadError('no stream')
             chunk = self.stream.recv(min(amt, 1024 * 64))
             if not chunk:
                 break

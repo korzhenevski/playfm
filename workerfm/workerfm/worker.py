@@ -97,8 +97,11 @@ class Radio(object):
         })
 
     def log_meta(self, meta):
+        meta = unicode(meta or '')
+
         if not meta.lower().startswith('streamtitle'):
             return
+
         if self.meta == meta:
             return
 
@@ -110,12 +113,12 @@ class Radio(object):
         }
 
         logging.info('update meta: %s', update)
-
         status = self.manager.task_log_meta(self.task_id, update)
 
         # check air_id change
         prev_air_id = self.air_id
         self.air_id = status['air_id']
+
         return self.air_id != prev_air_id
 
     def touch_task(self, interval=5):
@@ -129,20 +132,16 @@ class Radio(object):
             'ts': int(time()),
         }
         if self.writer:
-            runtime['w'] = self.get_writer_info()
+            runtime['w'] = {
+                'offset': self.writer.offset,
+                'name': self.writer.name
+            }
         #logging.info('task touch: %s', runtime)
 
         status = self.manager.task_touch(self.task_id, runtime)
-
         if status['code'] != 200:
             logging.info('stop %s', status['code'])
             self.stop()
-
-    def get_writer_info(self):
-        return {
-            'offset': self.writer.offset,
-            'name': self.writer.name
-        }
 
     def stop(self):
         self.running = False
@@ -151,29 +150,33 @@ class Radio(object):
 
 if __name__ == '__main__':
     from pprint import pprint as pp
-    from mock import Mock
     from zlib import crc32
 
     def fasthash(data):
         return crc32(data) & 0xffffffff
 
-    manager = Mock()
-    manager.task_touch.return_value = {'code': 200}
-    manager.task_update_meta.return_value = {'air_id': 1010}
+    class Manager(object):
+        def task_touch(self, task_id, runtime):
+            pp([task_id, runtime])
+            return {'code': 200}
+
+        def task_log_meta(self, task_id, update):
+            pp([task_id, update])
+            return {'air_id': 1010}
 
     def get_task(url):
         task = {
             'task_id': fasthash(url),
             'stream_url': url,
-            'writer': {
-                'volume': '/tmp/recorder',
-                'stripe_size': 1024 * 1024
-            }
+            #'writer': {
+            #    'volume': '/tmp/recorder',
+            #    'stripe_size': 1024 * 1024
+            #}
         }
         return task
 
     r = Radio(**get_task('http://fr2.ah.fm:9000/'))
-    r.manager = manager
+    r.manager = Manager()
     r.run()
 
     print 'exit'

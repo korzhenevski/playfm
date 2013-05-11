@@ -88,12 +88,13 @@ var Comet = {
         // Schedule next query, but only if there was no other request
         // performed (e.g. via execute() call) within the callback.
         if (!this._xhr) {
-            this._log("Next query in " + nextQueryDelay + " ms");
             var self = this;
             setTimeout(function () {
                 self._loopFunc();
             }, nextQueryDelay);
         }
+
+        this._log("Next query in " + nextQueryDelay + " ms");
     },
 
     _loopFunc: function () {

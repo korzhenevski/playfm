@@ -27,3 +27,6 @@ class HttpError(RadioError):
 
 class ConnectionError(RadioError):
     pass
+
+class ReadError(RadioError):
+    pass

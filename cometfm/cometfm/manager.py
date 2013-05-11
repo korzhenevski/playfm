@@ -5,41 +5,47 @@ from time import time
 from gevent.event import Event
 
 
-class Manager(object):
+class ChannelManager(object):
     def __init__(self):
         self.channels = {}
 
-    def get_channel(self, name):
+    def get(self, name):
         if name not in self.channels:
             self.channels[name] = Channel(name, manager=self)
         return self.channels.get(name)
 
-    def wakeup_channel(self, name):
-        # skip not watching channels
+    def wait_for_update(self, name, timeout):
+        channel = self.get(name)
+        channel.wait(timeout)
+        return channel
+
+    def update(self, name):
+        # skip not exists channel
         if name not in self.channels:
             return
-        channel = self.get_channel(name)
+        channel = self.get(name)
         channel.set()
         channel.clear()
 
-    def drop_offline_channels(self, deadline=60):
+    def housekeep(self, deadline=10):
         if not self.channels:
             return
         deadline = time() - deadline
         drop_list = []
         for name, channel in self.channels.iteritems():
-            if channel.clients_count == 0 and deadline <= channel.last_online_at:
+            if channel.listeners == 0 and channel.last_online_at <= deadline:
                 drop_list.append(name)
         for name in drop_list:
             self.channels.pop(name)
 
-    def get_stats(self, min_clients=None):
+    def get_stats(self, min_listeners=None):
         stats = {}
         for name, channel in self.channels.iteritems():
-            if min_clients is not None and channel.clients_count < min_clients:
+            if min_listeners is not None and channel.listeners < min_listeners:
                 continue
-            stats[name] = channel.clients_count
+            stats[name] = channel.listeners
         return stats
+
 
 class Channel(Event):
     def __init__(self, name, manager):
@@ -53,15 +59,15 @@ class Channel(Event):
         super(Channel, self).rawlink(*args, **kwargs)
 
     @property
-    def clients_count(self):
+    def listeners(self):
         return len(self._links)
 
 
 if __name__ == '__main__':
-    manager = Manager()
-    assert manager.get_channel('chan') == manager.get_channel('chan')
+    manager = ChannelManager()
+    assert manager.get('chan') == manager.get('chan')
     assert len(manager.channels) == 1
 
-    manager.drop_offline_channels(10)
+    manager.housekeep(-10)
     assert len(manager.channels) == 0
     print 'ok'

@@ -10,7 +10,7 @@ if node[:instance_role] == 'vagrant'
     owner = "vagrant"
     bin_path = "/usr/local/bin"
 
-    %w{rvlib checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+    %w{managerfm workerfm cometfm ester}.each do |pkg|
       execute "#{pkg} install" do
         command "cd /var/www/playfm/#{pkg}; python setup.py develop"
         action :run
@@ -24,7 +24,7 @@ if node[:instance_role] == 'vagrant'
       action :create
     end
 
-    %w{checkfm managerfm workerfm cometfm searchfm}.each do |pkg|
+    %w{managerfm workerfm cometfm ester}.each do |pkg|
       supervisor_service "#{pkg}" do
         action :enable
         command "#{bin_path}/#{pkg}"

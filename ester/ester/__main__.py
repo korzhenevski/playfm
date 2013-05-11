@@ -9,9 +9,12 @@ import zerorpc
 import logging
 import sys
 from .ester import Ester
+from redis import Redis
 
 FLAGS = gflags.FLAGS
 gflags.DEFINE_string('manager', 'tcp://127.0.0.1:4242', 'Manager endpoint')
+gflags.DEFINE_string('redis', 'afm', 'Redis host')
+gflags.DEFINE_integer('redis_db', 0, 'Redis database')
 
 
 def main():
@@ -24,7 +27,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
     manager = zerorpc.Client(FLAGS.manager)
-    ester = Ester(manager)
+    logging.info('connect to %s', FLAGS.manager)
+    redis = Redis(host=FLAGS.redis, db=FLAGS.redis_db)
+    ester = Ester(manager, redis)
 
     gevent.joinall([
         gevent.spawn(ester.scheduler)
