@@ -11,7 +11,7 @@ class ChannelManager(object):
 
     def get(self, name):
         if name not in self.channels:
-            self.channels[name] = Channel(name, manager=self)
+            self.channels[name] = Channel()
         return self.channels.get(name)
 
     def wait_for_update(self, name, timeout):
@@ -33,7 +33,7 @@ class ChannelManager(object):
         deadline = time() - deadline
         drop_list = []
         for name, channel in self.channels.iteritems():
-            if channel.listeners == 0 and channel.last_online_at <= deadline:
+            if channel.listeners == 0 and channel.ts <= deadline:
                 drop_list.append(name)
         for name in drop_list:
             self.channels.pop(name)
@@ -48,14 +48,12 @@ class ChannelManager(object):
 
 
 class Channel(Event):
-    def __init__(self, name, manager):
-        self.name = name
-        self.manager = manager
-        self.last_online_at = time()
+    def __init__(self):
+        self.ts = time()
         super(Channel, self).__init__()
 
     def rawlink(self, *args, **kwargs):
-        self.last_online_at = time()
+        self.ts = time()
         super(Channel, self).rawlink(*args, **kwargs)
 
     @property

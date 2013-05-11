@@ -11,14 +11,6 @@ from datetime import datetime
 def from_ts(ts):
     return datetime.fromtimestamp(ts)
 
-# разобратся с "catching up after missing event"
-# реконнект при потере связи
-# новый страйп - уведомим менеджера
-# стата из task_touch - в текущую запись
-
-# http://ester.againfm.dev/record/<radio_id>/<air_id>.mp3
-# http://ester.againfm.dev/record/<radio_id><air_id><ip_limit>.mp3
-# http://ester.againfm.dev/record/<radio_id>/<start_air_id>-<end_air_id>.mp3
 
 class Manager(object):
     def __init__(self, db, redis):
@@ -34,28 +26,7 @@ class Manager(object):
         """ select best online stream """
         where = {'radio_id': int(radio_id), 'deleted_at': 0, 'is_online': True}
         return self._db.streams.find_one(where, fields={'_id': 0, 'id': 1, 'url': 1, 'bitrate': 1},
-                                         sort=[('bitrate', 1)])
-
-    def get_record_url(self, air_id):
-        urls = {}
-        for stripe in self._db.records.find({'air_id': int(air_id)}):
-            name = stripe['name']
-            base = 'http://ester.againfm.dev'
-            url = '{}/record/{}/{}/{}?start={}'.format(base, name[-1], name[-3:-1], name, stripe['offset'])
-            urls[stripe['ts']] = url
-        return urls
-
-    def get_radio_record(self, radio_id):
-        items = self._db.radio_record.find({'radio_id': int(radio_id)}, fields=['stripe_id', 'ts', 'at', 'air_id'])
-        records = []
-        for item in items:
-            records.append({
-                'title': self._db.air.find_one({'id': int(item['air_id'])})['title'],
-                'at': from_ts(item['at']).strftime('%Y-%m-%d %H:%M:%S'),
-                'ts': from_ts(item['ts']).strftime('%Y-%m-%d %H:%M:%S'),
-                'stripe_id': item['stripe_id']
-            })
-        return records
+                                         sort=[('bitrate', -1)])
 
     def put_radio(self, radio_id):
         radio_id = int(radio_id)

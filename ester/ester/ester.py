@@ -20,22 +20,23 @@ class Ester(object):
             try:
                 resp = requests.get('http://127.0.0.1:6000/stats?clients=1')
                 stats = resp.json()['stats']
-            except Exception, exc:
+            except (requests.RequestException, ValueError):
                 logging.exception('cometfm stats request')
                 gevent.sleep(5)
                 continue
 
-            name = 'radio:scheduled'
+            key = 'radio:scheduled'
             for radio_id, clients in stats.iteritems():
-                if clients <= 3:
-                    continue
-                if self.redis.zadd(name, radio_id, time()):
+                #if clients <= 5:
+                #    continue
+
+                if self.redis.zadd(key, radio_id, time()):
                     task = self.manager.put_radio(radio_id)
                     logging.info('put radio %s (clients: %s, task_id: %s)', radio_id, clients, task['_id'])
 
-            for radio_id in self.redis.zrangebyscore(name, 0, time() - 10):
+            for radio_id in self.redis.zrangebyscore(key, 0, time() - 300):
                 self.manager.delete_radio(radio_id)
-                self.redis.zrem(name, radio_id)
+                self.redis.zrem(key, radio_id)
                 logging.info('remove radio %s', radio_id)
 
             gevent.sleep(1)
