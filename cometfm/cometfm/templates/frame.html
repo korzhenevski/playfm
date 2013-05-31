@@ -23,7 +23,6 @@ var Comet = {
     _processResponseText: function (text) {
         // Safary bug: responseText sometimes contain headers+body, not only body!
         // So cat before the first "[".
-        text = text.replace(/^[\s\S]*?(?=\[)/g, '');
         if (!(text && text[0] == '{')) {
             throw "response is not a complete JSON";
         }
