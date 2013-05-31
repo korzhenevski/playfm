@@ -6,12 +6,12 @@ import gevent
 import psutil
 import ujson as json
 import logging
-from redis import Redis, RedisError
+from redis import Redis, RedisError, WatchError
 from werkzeug.wrappers import Request, Response
 from werkzeug.exceptions import HTTPException, NotFound
 from werkzeug.routing import Map, Rule
 from jinja2 import Environment, FileSystemLoader
-
+from time import time
 from .manager import ChannelManager
 from .utils import retry_on_exceptions
 
@@ -66,6 +66,9 @@ class Comet(object):
         stats = self.manager.get_stats(min_listeners)
         return jsonify({'stats': stats})
 
+    """
+    слежение за прямым эфиром радиостанции
+    """
     def on_air(self, request, radio_id):
         if radio_id >= 10 ** 9:
             return self.error_404()
@@ -90,9 +93,35 @@ class Comet(object):
                 cache_key = 'user:{}:onair_likes'.format(user_id)
                 air['liked'] = bool(self.redis.zscore(cache_key, air['id']))
 
-            return jsonify(air=air, listeners=channel.listeners)
+            response = Response(mimetype='application/json')
+
+            listener_id = request.cookies.get('listener_id', type=int, default=0)
+            if not listener_id:
+                listener_id = int(str(int(time() * 1000000))[::-1])
+                response.set_cookie('listener_id', listener_id)
+
+            self.track_listener(radio_id, listener_id)
+            response.data = json.dumps({'air': air, 'listeners': self.listeners_count(radio_id)})
+            return response
         except RedisError:
             return Response('', status=503, mimetype='application/json')
+
+    def listeners_count(self, radio_id):
+        return self.redis.zcard('radio:{}:listeners'.format(radio_id))
+
+    @retry_on_exceptions([RedisError, WatchError])
+    def track_listener(self, radio_id, listener_id):
+        name = 'radio:{}:listeners'.format(radio_id)
+        table_name = 'radio:now_listen'
+        ts = int(time())
+        with self.redis.pipeline() as pipe:
+            # hit radio
+            pipe.zadd(table_name, radio_id, ts)
+            pipe.zremrangebyscore(table_name, 0, ts - 120)
+            # hit listener
+            pipe.zadd(name, listener_id, ts)
+            pipe.zremrangebyscore(name, 0, ts - 120)
+            pipe.execute()
 
     @retry_on_exceptions([RedisError])
     def get_onair(self, radio_id):

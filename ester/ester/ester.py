@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import gevent
-import requests
 import logging
 from time import time
-from gevent.queue import Queue
 
 requests_log = logging.getLogger('requests')
 requests_log.setLevel(logging.WARNING)
@@ -16,27 +14,25 @@ class Ester(object):
         self.redis = redis
 
     def scheduler(self):
+        key = 'radio:onair'
+        self.redis.delete(key)
+
         while True:
-            try:
-                resp = requests.get('http://127.0.0.1:6000/stats?clients=1')
-                stats = resp.json()['stats']
-            except (requests.RequestException, ValueError):
-                logging.exception('cometfm stats request')
-                gevent.sleep(5)
-                continue
+            ts = int(time())
 
-            key = 'radio:scheduled'
-            for radio_id, clients in stats.iteritems():
-                #if clients <= 5:
-                #    continue
+            for radio_id in self.redis.zrange('radio:now_listen', 0, -1):
+                listeners = self.redis.zcard('radio:{}:listeners'.format(radio_id))
 
-                if self.redis.zadd(key, radio_id, time()):
+                if listeners < 1:
+                    continue
+
+                if self.redis.zadd(key, radio_id, ts):
                     task = self.manager.put_radio(radio_id)
-                    logging.info('put radio %s (clients: %s, task_id: %s)', radio_id, clients, task['_id'])
+                    logging.info('schedule radio %s (clients: %s, task_id: %s)', radio_id, listeners, task['_id'])
 
-            for radio_id in self.redis.zrangebyscore(key, 0, time() - 300):
+            for radio_id in self.redis.zrangebyscore(key, 0, ts - 60):
                 self.manager.delete_radio(radio_id)
                 self.redis.zrem(key, radio_id)
-                logging.info('remove radio %s', radio_id)
+                logging.info('delete radio %s', radio_id)
 
             gevent.sleep(1)
