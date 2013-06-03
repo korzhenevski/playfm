@@ -133,8 +133,6 @@ class Manager(object):
         onair_key = 'radio:{}:onair'.format(radio_id)
         updates_key = 'radio:{}:onair_updates'.format(radio_id)
 
-        print air_id, prev_hash
-
         if air_id and prev_hash == title_hash:
             air = self._redis.get(onair_key)
             self._redis.expire(onair_key, ttl)
@@ -171,6 +169,7 @@ class Manager(object):
         air_json = json.dumps(air)
 
         self._redis.set(onair_key, air_json)
+        self._redis.expire(onair_key, ttl)
         self._redis.publish(updates_key, air_json)
 
         logging.debug('new title')
