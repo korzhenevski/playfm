@@ -109,17 +109,17 @@ class Radio(object):
         update = {
             'meta': self.meta,
             'ts': int(time()),
-            'prev_id': self.air_id
+            'pid': self.air_id
         }
 
         logging.info('update meta: %s', update)
         status = self.manager.task_log_meta(self.task_id, update)
 
         # check air_id change
-        prev_air_id = self.air_id
+        pid = self.air_id
         self.air_id = status['air_id']
 
-        return self.air_id != prev_air_id
+        return self.air_id != pid
 
     def touch_task(self, interval=5):
         # throttle calls

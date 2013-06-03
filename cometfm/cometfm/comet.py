@@ -25,6 +25,7 @@ class Comet(object):
         self.redis = Redis(host=config['redis_host'], db=config['redis_db'])
         self.manager = ChannelManager()
         self.onair_cache = {}
+        self.onair_cache_ttl = {}
 
         template_path = os.path.join(os.path.dirname(__file__), 'templates')
         self.jinja_env = Environment(loader=FileSystemLoader(template_path),
@@ -81,32 +82,39 @@ class Comet(object):
         # first request without wait
         request_counter = request.headers.get('x-counter', type=int, default=0)
         if timeout and request_counter != 1:
-            channel = self.manager.wait_for_update(radio_id, timeout)
+            self.manager.wait_for_update(radio_id, timeout)
         else:
-            channel = self.manager.get(radio_id)
+            self.manager.get(radio_id)
 
         try:
-            user_id = abs(request.args.get('uid', type=int, default=0))
-            air = self.get_onair(radio_id)
+            #user_id = abs(request.args.get('uid', type=int, default=0))
 
-            if user_id and air.get('id'):
-                cache_key = 'user:{}:onair_likes'.format(user_id)
-                air['liked'] = bool(self.redis.zscore(cache_key, air['id']))
-
+            #if user_id and air.get('id'):
+            #    cache_key = 'user:{}:onair_likes'.format(user_id)
+            #    air['liked'] = bool(self.redis.zscore(cache_key, air['id']))
             response = Response(mimetype='application/json')
-
             listener_id = request.cookies.get('listener_id', type=int, default=0)
             if not listener_id:
                 listener_id = int(str(int(time() * 1000000))[::-1])
                 response.set_cookie('listener_id', listener_id)
 
             self.track_listener(radio_id, listener_id)
-            response.data = json.dumps({'air': air, 'listeners': self.listeners_count(radio_id)})
+
+            air = self.get_onair(radio_id)
+            response.data = json.dumps({'air': air, 'listeners': self.get_listeners(radio_id)})
             return response
         except RedisError:
             return Response('', status=503, mimetype='application/json')
 
-    def listeners_count(self, radio_id):
+    #@retry_on_exceptions([RedisError])
+    def get_onair(self, radio_id):
+        air = self.redis.get('radio:{}:onair'.format(radio_id))
+        if air:
+            return json.loads(air)
+        return {}
+
+    @retry_on_exceptions([RedisError])
+    def get_listeners(self, radio_id):
         return self.redis.zcard('radio:{}:listeners'.format(radio_id))
 
     @retry_on_exceptions([RedisError, WatchError])
@@ -124,13 +132,6 @@ class Comet(object):
             pipe.execute()
 
     @retry_on_exceptions([RedisError])
-    def get_onair(self, radio_id):
-        if radio_id not in self.onair_cache:
-            info = self.redis.hgetall('radio:{}:onair'.format(radio_id))
-            self.onair_cache[radio_id] = info
-        return self.onair_cache[radio_id]
-
-    @retry_on_exceptions([RedisError])
     def watch_for_updates(self):
         pubsub = self.redis.pubsub()
         pubsub.psubscribe('radio:*:onair_updates')
@@ -140,7 +141,7 @@ class Comet(object):
             try:
                 radio_id = int(channel.split(':')[-2])
                 logging.info('update channel %s', radio_id)
-                self.onair_cache[radio_id] = json.loads(update['data'])
+                #self.onair_cache[radio_id] = json.loads(update['data'])
                 self.manager.update(radio_id)
             except ValueError:
                 pass

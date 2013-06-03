@@ -11,7 +11,6 @@ from datetime import datetime
 def from_ts(ts):
     return datetime.fromtimestamp(ts)
 
-
 class Manager(object):
     def __init__(self, db, redis):
         self._db = db
@@ -98,7 +97,7 @@ class Manager(object):
         if not stream_title:
             stream_title = ''
 
-        air = self.track_onair(task['radio_id'], stream_title, prev_id=data['prev_id'])
+        air = self.track_onair(task['radio_id'], stream_title, pid=data['pid'])
         air_id = int(air['id'])
 
         return {'air_id': air_id}
@@ -114,24 +113,41 @@ class Manager(object):
         }
         self._db.records.update({'air_id': int(update['air_id']), 'name': update['name']}, record, upsert=True)
 
-    def track_onair(self, radio_id, title, prev_id=-1):
+    def track_onair(self, radio_id, title, pid=-1, ttl=120):
+        """
+        log onair title with duplicate checking
+        """
         radio_id = int(radio_id)
-        prev_id = int(prev_id)
-
-        air_id = self._redis.get('radio:{}:air_id'.format(radio_id))
-
         title = title.strip()
-        title_hash = fasthash(title)
+        pid = int(pid)
 
-        previous_title_hash = self._redis.getset('radio:{}:onair_title'.format(radio_id), title_hash)
-        if air_id and previous_title_hash == title_hash:
-            logging.debug('repeated title')
-            air = self._redis.hgetall('radio:{}:onair'.format(radio_id))
-            self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
-            return air
+        air_key = 'radio:{}:air_id'.format(radio_id)
+        air_id = self._redis.get(air_key)
+        self._redis.expire(air_key, ttl)
+
+        title_hash = fasthash(title)
+        h_key = 'radio:{}:air_h'.format(radio_id)
+        prev_hash = self._redis.getset(h_key, title_hash)
+        self._redis.expire(h_key, ttl)
+
+        onair_key = 'radio:{}:onair'.format(radio_id)
+        updates_key = 'radio:{}:onair_updates'.format(radio_id)
+
+        print air_id, prev_hash
+
+        if air_id and prev_hash == title_hash:
+            air = self._redis.get(onair_key)
+            self._redis.expire(onair_key, ttl)
+
+            if air:
+                logging.debug('repeated title')
+                self._redis.publish(updates_key, air)
+                return json.loads(air)
+            else:
+                logging.debug('refresh stale onair data')
 
         air_id = self.get_next_id('air')
-        self._redis.set('radio:{}:air_id'.format(radio_id), air_id)
+        self._redis.set(air_key, air_id)
 
         ts = get_ts()
         self._db.air.insert({
@@ -139,25 +155,31 @@ class Manager(object):
             'radio_id': radio_id,
             'ts': ts,
             'title': title,
-            'hash': title_hash,
-            'prev_id': prev_id
+            'h': title_hash,
+            'pid': pid,
+            'nid': -1
         })
-
-        if prev_id > 0:
-            self._db.air.update({'id': prev_id}, {'$set': {'end': get_ts()}})
+        if pid > 0:
+            self._db.air.update({'id': pid}, {'$set': {'nid': get_ts()}})
 
         air = {
             'id': air_id,
             'title': title,
             'ts': ts,
-            'prev_id': prev_id
+            'pid': pid
         }
+        air_json = json.dumps(air)
 
-        self._redis.hmset('radio:{}:onair'.format(radio_id), air)
-        self._redis.publish('radio:{}:onair_updates'.format(radio_id), json.dumps(air))
+        self._redis.set(onair_key, air_json)
+        self._redis.publish(updates_key, air_json)
 
         logging.debug('new title')
         return air
+
+    def get_air(self, radio_id, limit=10):
+        radio_id = int(radio_id)
+        history = self._db.air.find({'radio_id': int(radio_id)}, fields={'_id': 0}).sort('ts', 1).limit(limit)
+        return list(history)
 
     def get_free_volumes(self, hostname, usage_limit=90):
         volume_usage = self._db.volume_usage.find_one({'hostname': hostname})

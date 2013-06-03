@@ -34,13 +34,14 @@ def main():
     server = WSGIServer((FLAGS.host, FLAGS.port), app, spawn=FLAGS.maxconn)
 
     def shutdown():
-        logging.warning('server shutdown')
+        logging.warning('Server shutdown')
         server.stop()
 
     gevent.signal(signal.SIGTERM, shutdown)
 
     try:
-        logging.info("server running on %s:%d. pid %s", FLAGS.host, FLAGS.port, os.getpid())
+        logging.info('Server running on %s:%d (pid: %s)', FLAGS.host, FLAGS.port, os.getpid())
+        logging.info('Using Redis on %s (db: %s)', FLAGS.redis, FLAGS.redis_db)
         gevent.spawn(app.service_visit)
         gevent.spawn(app.watch_for_updates)
         server.serve_forever()
