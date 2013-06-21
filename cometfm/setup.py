@@ -11,6 +11,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'Jinja2==2.6',
+        'pyzmq==2.2.0.1',
         'Werkzeug==0.8.3',
         'gevent==0.13.8',
         'hiredis==0.1.1',
