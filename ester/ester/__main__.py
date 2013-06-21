@@ -13,7 +13,7 @@ from redis import Redis
 
 FLAGS = gflags.FLAGS
 gflags.DEFINE_string('manager', 'tcp://127.0.0.1:4242', 'Manager endpoint')
-gflags.DEFINE_string('redis', 'afm', 'Redis host')
+gflags.DEFINE_string('redis', '127.0.0.1', 'Redis host')
 gflags.DEFINE_integer('redis_db', 0, 'Redis database')
 
 

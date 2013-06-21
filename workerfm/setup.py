@@ -9,7 +9,12 @@ setup(
     author='RadioVoice',
     author_email='team@again.fm',
     packages=find_packages(),
-    install_requires=[],
+    install_requires=[
+        'gevent==0.13.8',
+        'psutil==0.7.0',
+        'python-gflags==2.0',
+        'zerorpc==0.4.1',
+    ],
     zip_safe=False,
     entry_points={
         'console_scripts': [

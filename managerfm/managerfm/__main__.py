@@ -13,9 +13,9 @@ from redis import Redis
 from .manager import Manager
 
 FLAGS = gflags.FLAGS
-gflags.DEFINE_string('redis', 'afm', 'Redis host')
+gflags.DEFINE_string('redis', '127.0.0.1', 'Redis host')
 gflags.DEFINE_integer('redis_db', 0, 'Redis database')
-gflags.DEFINE_string('mongo', 'afm', 'MongoDB host')
+gflags.DEFINE_string('mongo', '127.0.0.1', 'MongoDB host')
 gflags.DEFINE_string('mongo_db', 'againfm', 'MongoDB name')
 gflags.DEFINE_string('bind', 'tcp://*:4242', 'Server ZMQ bind')
 
