@@ -113,7 +113,7 @@ class Manager(object):
         }
         self._db.records.update({'air_id': int(update['air_id']), 'name': update['name']}, record, upsert=True)
 
-    def track_onair(self, radio_id, title, pid=-1, ttl=120):
+    def track_onair(self, radio_id, title, pid=-1, ttl=600):
         """
         log onair title with duplicate checking
         """

@@ -4,35 +4,56 @@ import gevent
 import logging
 from time import time
 
-requests_log = logging.getLogger('requests')
-requests_log.setLevel(logging.WARNING)
-
 
 class Ester(object):
-    def __init__(self, manager, redis):
+    def __init__(self, manager, redis, db):
         self.manager = manager
         self.redis = redis
+        self.db = db
+        self.stat = {}
 
     def scheduler(self):
-        key = 'radio:onair'
-        self.redis.delete(key)
+        radio_onair = 'radio:onair'
 
         while True:
             ts = int(time())
+            self.stat = {}
+
+            for radio_id in self.redis.zrangebyscore(radio_onair, 0, ts - 120):
+                self.manager.delete_radio(radio_id)
+                self.redis.zrem(radio_onair, radio_id)
+                logging.info('delete radio %s', radio_id)
 
             for radio_id in self.redis.zrange('radio:now_listen', 0, -1):
                 listeners = self.redis.zcard('radio:{}:listeners'.format(radio_id))
 
-                if listeners < 1:
+                self.stat[radio_id] = listeners
+
+                radio = self.db.radio.find_one({'id': int(radio_id), 'air.track': True, 'deleted_at': 0},
+                                               fields=['air.min'])
+                if not radio:
+                    #logging.debug('radio %s not found', radio_id)
                     continue
 
-                if self.redis.zadd(key, radio_id, ts):
+                if listeners < radio['air']['min']:
+                #logging.debug('radio %s: too few listeners (%s of min %s)', radio_id, listeners, radio['air']['min'])
+                    continue
+
+                if self.redis.zadd(radio_onair, radio_id, ts):
                     task = self.manager.put_radio(radio_id)
                     logging.info('schedule radio %s (clients: %s, task_id: %s)', radio_id, listeners, task['_id'])
 
-            for radio_id in self.redis.zrangebyscore(key, 0, ts - 60):
-                self.manager.delete_radio(radio_id)
-                self.redis.zrem(key, radio_id)
-                logging.info('delete radio %s', radio_id)
-
             gevent.sleep(1)
+
+    def stat_collector(self):
+        while True:
+            ts = int(time())
+            self.db.radio.update({'air.at': {'$lt': ts - 120}}, {'$set': {'air.listeners': 0}})
+
+            for radio_id, listeners in self.stat.iteritems():
+                self.db.radio.update({'id': int(radio_id)}, {'$set': {
+                    'air.listeners': listeners,
+                    'air.at': ts
+                }})
+
+            gevent.sleep(10)

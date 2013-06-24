@@ -8,7 +8,6 @@ patch_all()
 
 import logging
 import socket
-import uuid
 import os
 from gevent.pool import Pool
 from .radio import RadioClient
@@ -20,7 +19,7 @@ import psutil
 class Worker(object):
     def __init__(self, manager, record_to):
         self.manager = manager
-        self.name = '{}:{}'.format(socket.gethostname(), uuid.uuid4())
+        self.name = '{}:{}'.format(socket.gethostname(), int(time() * 10000))
         self.tasks = {}
         self.record_to = record_to
         self.stats = psutil.Process(os.getpid())
@@ -102,8 +101,8 @@ class Radio(object):
         if not meta.lower().startswith('streamtitle'):
             return
 
-        if self.meta == meta:
-            return
+        #if self.meta == meta:
+        #    return
 
         self.meta = meta
         update = {

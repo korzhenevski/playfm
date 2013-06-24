@@ -87,11 +87,6 @@ class Comet(object):
             self.manager.get(radio_id)
 
         try:
-            #user_id = abs(request.args.get('uid', type=int, default=0))
-
-            #if user_id and air.get('id'):
-            #    cache_key = 'user:{}:onair_likes'.format(user_id)
-            #    air['liked'] = bool(self.redis.zscore(cache_key, air['id']))
             response = Response(mimetype='application/json')
             listener_id = request.cookies.get('listener_id', type=int, default=0)
             if not listener_id:
@@ -119,17 +114,27 @@ class Comet(object):
 
     @retry_on_exceptions([RedisError, WatchError])
     def track_listener(self, radio_id, listener_id):
-        name = 'radio:{}:listeners'.format(radio_id)
-        table_name = 'radio:now_listen'
         ts = int(time())
+        deadline = ts - 120
+
         with self.redis.pipeline() as pipe:
+            # hit radio listener
+            radio_listeners = 'radio:{}:listeners'.format(radio_id)
+            pipe.zadd(radio_listeners, listener_id, ts)
+            pipe.zremrangebyscore(radio_listeners, 0, deadline)
+
+            # hit all listeners
+            listeners = 'radio:listeners'
+            pipe.zadd(listeners, listener_id, ts)
+            pipe.zremrangebyscore(listeners, 0, deadline)
+
             # hit radio
-            pipe.zadd(table_name, radio_id, ts)
-            pipe.zremrangebyscore(table_name, 0, ts - 120)
-            # hit listener
-            pipe.zadd(name, listener_id, ts)
-            pipe.zremrangebyscore(name, 0, ts - 120)
+            now_listen = 'radio:now_listen'
+            pipe.zadd(now_listen, radio_id, ts)
+            pipe.zremrangebyscore(now_listen, 0, deadline)
+
             pipe.execute()
+
 
     @retry_on_exceptions([RedisError])
     def watch_for_updates(self):
