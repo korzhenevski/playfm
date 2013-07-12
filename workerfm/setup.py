@@ -10,11 +10,10 @@ setup(
     author_email='team@again.fm',
     packages=find_packages(),
     install_requires=[
-        'pyzmq==2.2.0.1',
         'gevent==0.13.8',
-        'psutil==0.7.0',
+        'psutil==1.0.0',
         'python-gflags==2.0',
-        'zerorpc==0.4.1',
+        'zerorpc==0.4.3',
     ],
     zip_safe=False,
     entry_points={

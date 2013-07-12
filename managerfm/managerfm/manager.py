@@ -4,12 +4,12 @@
 import logging
 import ujson as json
 from .utils import parse_stream_title, get_ts, fasthash
-from pprint import pprint as pp
 from datetime import datetime
 
 
 def from_ts(ts):
     return datetime.fromtimestamp(ts)
+
 
 class Manager(object):
     def __init__(self, db, redis):

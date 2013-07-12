@@ -10,14 +10,12 @@ setup(
     author_email='team@again.fm',
     packages=find_packages(),
     install_requires=[
-        'Jinja2==2.6',
-        'pyzmq==2.2.0.1',
-        'Werkzeug==0.8.3',
+        'Jinja2==2.7',
+        'Werkzeug==0.9.1',
         'gevent==0.13.8',
-        'hiredis==0.1.1',
-        'psutil==0.7.0',
+        'psutil==1.0.0',
         'python-gflags==2.0',
-        'redis==2.6.0',
+        'redis==2.7.6',
     ],
     zip_safe=False,
     entry_points={
