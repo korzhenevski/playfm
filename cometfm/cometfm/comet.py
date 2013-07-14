@@ -91,7 +91,7 @@ class Comet(object):
             listener_id = request.cookies.get('listener_id', type=int, default=0)
             if not listener_id:
                 listener_id = int(str(int(time() * 1000000))[::-1])
-                response.set_cookie('listener_id', listener_id)
+                response.set_cookie('listener_id', str(listener_id))
 
             self.track_listener(radio_id, listener_id)
 
