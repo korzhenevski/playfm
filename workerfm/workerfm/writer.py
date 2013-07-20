@@ -3,17 +3,18 @@
 
 import os
 import errno
-from time import time
 import logging
+from zlib import crc32
 
 
 class StripeWriter(object):
-    def __init__(self, volume, stripe_size=1024 * 1024 * 256):
+    def __init__(self, volume, name):
+        self.offset = 0
         self.volume = volume
         self.stripe = None
-        self.stripe_index = 0
-        self.offset = 0
-        self.stripe_size = stripe_size
+        self.name = name
+
+        self.new_stripe()
 
     def write(self, data):
         if not self.stripe:
@@ -22,17 +23,14 @@ class StripeWriter(object):
         self.stripe.write(data)
         self.offset += len(data)
 
-    def need_rotate(self):
-        return self.stripe_size and self.offset >= self.stripe_size
+    def get_full_path(self):
+        name_hash = str(crc32(self.name) & 0xffffffff)
+        return os.path.join(self.volume, name_hash[0], name_hash[:2], self.name)
 
     def new_stripe(self):
         self.offset = 0
-        self.stripe_index += 1
 
-        self.name = '{}{}'.format(self.stripe_index, int(round(time() * 10000)))[::-1]
-
-        # build scheme: /<volume_path>/<last_name_letter>/<last_2_name_letters>
-        self.path = os.path.join(self.volume, self.name[-1], self.name[-3:-1], self.name)
+        self.path = self.get_full_path()
         self._makedir(os.path.dirname(self.path))
 
         self.stripe = open(self.path, 'a', buffering=0)

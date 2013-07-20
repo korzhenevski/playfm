@@ -15,123 +15,159 @@ class Manager(object):
     def __init__(self, db, redis):
         self._db = db
         self._redis = redis
-        self._rq = self._db.radio_queue
+        self._queue = self._db['stream_queue']
 
-    def get_next_id(self, ns):
-        ret = self._db.object_ids.find_and_modify({'_id': ns}, {'$inc': {'next': 1}}, new=True, upsert=True)
-        return ret['next']
+    def select_stream(self, stream_id):
+        """ select exists stream """
+        stream = self._db.streams.find_one({'_id': int(stream_id), 'deleted_at': 0}, fields=['url'])
+        if stream:
+            stream['id'] = stream.pop('_id')
+        return stream
 
-    def select_stream(self, radio_id):
-        """ select best online stream """
-        where = {'radio_id': int(radio_id), 'deleted_at': 0, 'is_online': True}
-        return self._db.streams.find_one(where, fields={'_id': 0, 'id': 1, 'url': 1, 'bitrate': 1},
-                                         sort=[('bitrate', -1)])
+    def put_stream(self, stream_id, do_record=False):
+        """ enqueue stream """
 
-    def put_radio(self, radio_id):
-        radio_id = int(radio_id)
+        stream_id = int(stream_id)
+        do_record = bool(do_record)
 
-        task = self._rq.find_one({'radio_id': radio_id, 'deleted_at': 0})
+        task = self._queue.find_one({'stream_id': stream_id, 'deleted_at': 0})
         if task:
             return task
 
         task = {
-            '_id': self.get_next_id('radio_queue'),
-            'radio_id': radio_id,
-            'touch_at': 0,
-            'deleted_at': 0
+            '_id': self.get_next_id('stream_queue'),
+            'stream_id': stream_id,
+            'ts': 0,
+            'do_record': do_record,
+            'deleted_at': 0,
+            'touch_at': 0
         }
-        self._rq.insert(task)
+        self._queue.insert(task)
+
         return task
 
-    def delete_radio(self, radio_id=None):
+    def delete_stream(self, stream_id=None):
+        """ delete stream task """
         where = {'deleted_at': 0}
-        if radio_id:
-            where['radio_id'] = int(radio_id)
-        self._rq.update(where, {'$set': {'deleted_at': get_ts()}})
+        if stream_id:
+            where['stream_id'] = int(stream_id)
+        self._queue.update(where, {'$set': {'deleted_at': get_ts()}})
 
-    def task_reserve(self, worker_id):
+    def task_reserve(self, server_id, worker_stat=None):
         """ reserve task for worker """
-        ts = get_ts()
-
-        where = {'touch_at': {'$lte': ts - 10}, 'deleted_at': 0}
-        update = {'touch_at': ts, 'worker': worker_id}
-        task = self._rq.find_and_modify(where, {'$set': update}, fields=['_id', 'radio_id'], new=True)
-
+        update = {'$set': {'touch_at': get_ts(), 'server_id': int(server_id), 'runtime': {}}}
+        task = self._queue.find_and_modify({'touch_at': {'$lte': get_ts() - 10}, 'deleted_at': 0},
+                                           update, fields=['_id', 'stream_id'], new=True)
         if not task:
             return
 
-        stream = self.select_stream(task['radio_id'])
+        logging.info('worker stat: %s', worker_stat)
+
+        stream = self.select_stream(task['stream_id'])
         if not stream:
-            logging.debug('no stream for radio %s', task['radio_id'])
+            logging.debug('no stream %s', task['stream_id'])
             return
 
         task['id'] = task.pop('_id')
         task['stream'] = stream
 
-        # Stripe params
-        #task['w'] = {
-        #    'volume': '/tmp/records',
-        #    'stripe_size': 1024 * 1024 * 32,
-        #}
-        logging.info('task %s reserved to worker %s', task['id'], worker_id)
-
+        logging.info('task %s reserved to server %s', task['id'], server_id)
         return task
 
     def task_touch(self, task_id, runtime):
-        task = self._rq.find_one({'_id': int(task_id), 'deleted_at': 0}, fields=['radio_id'])
-        if not task:
-            return {'code': 404}
-
-        self._rq.update({'_id': int(task_id)}, {'$set': {'touch_at': get_ts(), 'runtime': runtime}})
-        return {'code': 200}
-
-    def task_log_meta(self, task_id, data):
         task_id = int(task_id)
 
-        task = self._rq.find_one({'_id': task_id, 'deleted_at': 0}, fields=['radio_id'])
+        task = self._queue.find_one({'_id': task_id, 'deleted_at': 0})
         if not task:
-            logging.debug('no task')
+            return False
+
+        if 'w' in runtime:
+            self._log_record(task_id, server_id=task['server_id'], air_id=runtime['air_id'], record=runtime['w'])
+
+        self._queue.update({'_id': task_id}, {'$set': {'touch_at': get_ts(), 'runtime': runtime}})
+        return True
+
+    def _log_record(self, task_id, server_id, air_id, record):
+        update = {
+            '$setOnInsert': {
+                'ts': get_ts(),
+                'server_id': int(server_id),
+                'volume': record['volume'],
+                'name': record['name'],
+                'task_id': task_id,
+                'status': 0,
+            },
+            '$set': {
+                'offset': int(record['offset']),
+                'at': get_ts()
+            }
+        }
+        logging.debug('log stripe: %s', record)
+
+        self._db.records.update({'air_id': air_id, 'name': record['name']}, update, upsert=True)
+
+    def task_log_meta(self, task_id, log):
+        task_id = int(task_id)
+
+        task = self._queue.find_one({'_id': task_id, 'deleted_at': 0},
+                                    fields=['stream_id', 'do_record', 'runtime.w'])
+        if not task:
+            logging.debug('no task %s', task_id)
             return
 
-        stream_title = parse_stream_title(data['meta'])
+        stream_title = parse_stream_title(log['meta'])
         if not stream_title:
             stream_title = ''
 
-        air = self.track_onair(task['radio_id'], stream_title, pid=data['pid'])
-        air_id = int(air['id'])
+        air = self.track_onair(task['stream_id'], stream_title, pid=log['pid'])
+        result = {'air_id': int(air['id'])}
 
-        return {'air_id': air_id}
+        if task['do_record']:
+            result['w'] = self._record_for_task(task, air_id=air['id'])
 
-    def task_log_stripe(self, task_id, update):
-        logging.info('stripe update (task %s): %s', task_id, update)
-        record = {
-            '$set': {
-                'task_id': int(task_id),
-                'offset': int(update['offset']),
-                'ts': get_ts()
-            }
+        return result
+
+    def _get_record_id(self, stream_id, air_id):
+        return fasthash('{}_{}'.format(stream_id, air_id)) + str(get_ts())[-5:]
+
+    def _record_for_task(self, task, air_id):
+        w = task['runtime'].get('w', {})
+        name = w.get('name')
+        need_rotate = w.get('offset', 0) >= 1024 * 1024 * 0.2
+
+        if not name or need_rotate:
+            if need_rotate:
+                record = self._db.records.find_one({'air_id': air_id, 'name': name}, fields=['at', 'ts'])
+                # TODO: check exception if noy record found? 
+                logging.info('need rotate air_id: %s, name: %s record: %s', air_id, name, record)
+                duration = record['at'] - record['ts']
+                self._db.records.update({'air_id': air_id, 'name': name}, {'$set': {'duration': duration, 'status': 1}})
+
+            name = fasthash('{}_{}'.format(task['stream_id'], air_id)) + str(get_ts())[-5:]
+
+        return {
+            'volume': '/tmp/worker_records',
+            'name': name
         }
-        self._db.records.update({'air_id': int(update['air_id']), 'name': update['name']}, record, upsert=True)
 
-    def track_onair(self, radio_id, title, pid=-1, ttl=600):
-        """
-        log onair title with duplicate checking
-        """
-        radio_id = int(radio_id)
+    def track_onair(self, stream_id, title, pid=-1, ttl=600):
+        """ log onair title with duplicate checking """
+        stream_id = int(stream_id)
         title = title.strip()
         pid = int(pid)
 
-        air_key = 'radio:{}:air_id'.format(radio_id)
+        # TODO: упростить гавно с хешами
+        air_key = 'radio:{}:air_id'.format(stream_id)
         air_id = self._redis.get(air_key)
         self._redis.expire(air_key, ttl)
 
         title_hash = fasthash(title)
-        h_key = 'radio:{}:air_h'.format(radio_id)
+        h_key = 'radio:{}:air_h'.format(stream_id)
         prev_hash = self._redis.getset(h_key, title_hash)
         self._redis.expire(h_key, ttl)
 
-        onair_key = 'radio:{}:onair'.format(radio_id)
-        updates_key = 'radio:{}:onair_updates'.format(radio_id)
+        onair_key = 'radio:{}:onair'.format(stream_id)
+        updates_key = 'radio:{}:onair_updates'.format(stream_id)
 
         if air_id and prev_hash == title_hash:
             air = self._redis.get(onair_key)
@@ -150,15 +186,16 @@ class Manager(object):
         ts = get_ts()
         self._db.air.insert({
             'id': air_id,
-            'radio_id': radio_id,
+            'stream_id': stream_id,
             'ts': ts,
             'title': title,
             'h': title_hash,
             'pid': pid,
             'nid': -1
         })
+
         if pid > 0:
-            self._db.air.update({'id': pid}, {'$set': {'nid': get_ts()}})
+            self._db.air.update({'id': pid}, {'$set': {'nid': air_id}})
 
         air = {
             'id': air_id,
@@ -175,14 +212,6 @@ class Manager(object):
         logging.debug('new title')
         return air
 
-    def get_air(self, radio_id, limit=10):
-        radio_id = int(radio_id)
-        history = self._db.air.find({'radio_id': int(radio_id)}, fields={'_id': 0}).sort('ts', 1).limit(limit)
-        return list(history)
-
-    def get_free_volumes(self, hostname, usage_limit=90):
-        volume_usage = self._db.volume_usage.find_one({'hostname': hostname})
-        if not volume_usage:
-            return
-        return [vol for vol, usage in volume_usage['usage'].iteritems() if usage['percent'] <= usage_limit]
-
+    def get_next_id(self, ns):
+        ret = self._db.object_ids.find_and_modify({'_id': ns}, {'$inc': {'next': 1}}, new=True, upsert=True)
+        return ret['next']

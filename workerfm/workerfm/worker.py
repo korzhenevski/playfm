@@ -4,44 +4,59 @@
 import gevent
 
 from gevent.monkey import patch_all
+
 patch_all()
 
 import logging
 import socket
-import os
 from gevent.pool import Pool
 from .radio import RadioClient
 from .writer import StripeWriter
 from time import time
 import psutil
+import json
+import os
+from zlib import crc32
+
+
+def pretty_print(data):
+    return json.dumps(data, indent=4)
 
 
 class Worker(object):
-    def __init__(self, manager, record_to):
+    def __init__(self, manager, server_id):
         self.manager = manager
-        self.name = '{}:{}'.format(socket.gethostname(), int(time() * 10000))
+        if server_id:
+            self.server_id = server_id
+        else:
+            self.server_id = crc32(socket.gethostname()) & 0xffffffff
         self.tasks = {}
-        self.record_to = record_to
         self.stats = psutil.Process(os.getpid())
 
     def run(self, pool_size):
         self.pool = Pool(size=pool_size)
-        logging.info('start worker pool: %s', pool_size)
+
         while True:
             self.pool.wait_available()
-            #logging.debug('mem: %s, cpu: %s', self.stats.get_memory_percent(), self.stats.get_cpu_percent())
             task = self.reserve_task()
             if task:
                 self.run_task(task)
             gevent.sleep(1)
 
     def reserve_task(self):
-        return self.manager.task_reserve(self.name)
+        stat = {
+            'memory': self.stats.get_memory_percent(),
+            'cpu': self.stats.get_cpu_percent(),
+            'running': self.pool.size
+        }
+        return self.manager.task_reserve(self.server_id, stat)
 
     def run_task(self, task):
-        logging.info('run task: %s', task)
-        radio = Radio(task['id'], stream_url=task['stream']['url'], writer=task.get('w'))
+        #logging.info('run task: %s', pretty_print(task))
+
+        radio = Radio(task['id'], stream_url=task['stream']['url'])
         radio.manager = self.manager
+
         self.pool.spawn(radio.run)
         self.tasks[task['id']] = radio
 
@@ -54,18 +69,15 @@ class Worker(object):
 class Radio(object):
     radio_client_class = RadioClient
 
-    def __init__(self, task_id, stream_url, writer=None):
+    def __init__(self, task_id, stream_url):
         self.task_id = task_id
         self.stream_url = stream_url
-
         self.writer = None
-        if writer:
-            self.writer = StripeWriter(writer['volume'], writer['stripe_size'])
-
         self.meta = None
         self.manager = None
         self.air_id = -1
         self.last_touch = 0
+        self.last_meta = 0
 
     def run(self):
         self.radio = self.radio_client_class(self.stream_url)
@@ -74,51 +86,50 @@ class Radio(object):
 
         while self.running:
             chunk, meta = self.radio.read()
-            meta_changed = self.log_meta(meta)
 
-            if meta_changed:
-                logging.info('meta (air_id %s): %s', self.air_id, self.meta)
+            if self.track_meta(meta):
+                meta_changed, w = self.log_meta()
+                if meta_changed:
+                    logging.info('meta (air_id %s): %s', self.air_id, self.meta)
+                self.writer_control(w)
 
             if self.writer:
-                if meta_changed or self.writer.need_rotate():
-                    self.new_stripe()
                 self.writer.write(chunk)
 
             self.touch_task()
             gevent.sleep(0)
 
-    def new_stripe(self):
-        self.writer.new_stripe()
-        self.manager.task_log_stripe(self.task_id, {
-            'air_id': self.air_id,
-            'offset': 0,
-            'name': self.writer.name,
-        })
+    def track_meta(self, meta):
+        if meta and meta != self.meta:
+            self.meta = unicode(meta, 'utf-8', 'ignore').strip()
+        elif self.last_meta <= time() - 10:
+            self.last_meta = time()
+            return True
 
-    def log_meta(self, meta):
-        meta = unicode(meta or '')
+    def writer_control(self, w):
+        if w:
+            # create new writer if not exists or volume/name changed
+            if not self.writer or (w['volume'] != self.writer.volume or w['name'] != self.writer.name):
+                self.writer = StripeWriter(w['volume'], w['name'])
+        elif self.writer:
+            self.writer.close()
+            self.writer = None
 
-        if not meta.lower().startswith('streamtitle'):
-            return
-
-        #if self.meta == meta:
-        #    return
-
-        self.meta = meta
-        update = {
+    def log_meta(self):
+        log = {
             'meta': self.meta,
+            'pid': self.air_id,
             'ts': int(time()),
-            'pid': self.air_id
         }
 
-        logging.info('update meta: %s', update)
-        status = self.manager.task_log_meta(self.task_id, update)
+        #logging.info('log meta: %s', pretty_print(log))
+        status = self.manager.task_log_meta(self.task_id, log)
 
         # check air_id change
         pid = self.air_id
         self.air_id = status['air_id']
 
-        return self.air_id != pid
+        return self.air_id != pid, status.get('w')
 
     def touch_task(self, interval=5):
         # throttle calls
@@ -130,16 +141,18 @@ class Radio(object):
             'air_id': self.air_id,
             'ts': int(time()),
         }
+
         if self.writer:
             runtime['w'] = {
                 'offset': self.writer.offset,
-                'name': self.writer.name
+                'name': self.writer.name,
+                'volume': self.writer.volume
             }
-        #logging.info('task touch: %s', runtime)
+            #logging.info('task touch: %s', pretty_print(runtime))
 
-        status = self.manager.task_touch(self.task_id, runtime)
-        if status['code'] != 200:
-            logging.info('stop %s', status['code'])
+        result = self.manager.task_touch(self.task_id, runtime)
+        if not result:
+            logging.info('stop task')
             self.stop()
 
     def stop(self):

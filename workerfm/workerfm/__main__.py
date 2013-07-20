@@ -13,7 +13,7 @@ from .worker import Worker
 
 FLAGS = gflags.FLAGS
 gflags.DEFINE_string('manager', 'tcp://127.0.0.1:4242', 'Manager ZMQ address')
-gflags.DEFINE_string('record_to', '/tmp/record', 'Record files path')
+gflags.DEFINE_string('server_id', None, 'Server ID')
 gflags.DEFINE_integer('threads', 10, 'Max worker task threads')
 
 
@@ -27,7 +27,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s\t%(asctime)s\t %(message)s')
 
     manager = zerorpc.Client(FLAGS.manager)
-    worker = Worker(manager, FLAGS.record_to)
+    worker = Worker(manager, FLAGS.server_id)
+    logging.info('start worker server_id: %s pool_size: %s', worker.server_id, FLAGS.threads)
+
     gevent.joinall([
         gevent.spawn(worker.run, pool_size=FLAGS.threads),
     ])

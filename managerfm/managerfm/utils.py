@@ -3,11 +3,14 @@
 from time import time
 from zlib import crc32
 
+
 def get_ts():
     return int(time())
 
+
 def fasthash(data):
     return unicode(crc32(data) & 0xffffffff)
+
 
 def parse_stream_title(rawmeta):
     # extract StreamTitle='...';
