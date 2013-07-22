@@ -59,7 +59,7 @@ class Manager(object):
         where = {'deleted_at': 0}
         if stream_id:
             where['stream_id'] = int(stream_id)
-        self._queue.update(where, {'$set': {'deleted_at': get_ts()}})
+        self._queue.update(where, {'$set': {'deleted_at': get_ts()}}, multi=True)
         return where
 
     def task_reserve(self, server_id, worker_stat=None):
