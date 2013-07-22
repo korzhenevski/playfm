@@ -11,7 +11,7 @@ import logging
 import socket
 from gevent.pool import Pool
 from .radio import RadioClient
-from .writer import StripeWriter
+from .recorder import Recorder
 from time import time
 import psutil
 import json
@@ -24,14 +24,18 @@ def pretty_print(data):
 
 
 class Worker(object):
-    def __init__(self, manager, server_id):
+    def __init__(self, manager, server_id, record_to):
         self.manager = manager
+
         if server_id:
             self.server_id = server_id
         else:
-            self.server_id = crc32(socket.gethostname()) & 0xffffffff
+            self.server_id = crc32(socket.gethostname()) & 0xffffffff >> 2
+        self.server_id = int(self.server_id)
+
         self.tasks = {}
         self.stats = psutil.Process(os.getpid())
+        self.record_to = record_to
 
     def run(self, pool_size):
         self.pool = Pool(size=pool_size)
@@ -54,7 +58,7 @@ class Worker(object):
     def run_task(self, task):
         #logging.info('run task: %s', pretty_print(task))
 
-        radio = Radio(task['id'], stream_url=task['stream']['url'])
+        radio = Radio(task['id'], stream_url=task['stream']['url'], record_to=self.record_to)
         radio.manager = self.manager
 
         self.pool.spawn(radio.run)
@@ -69,15 +73,18 @@ class Worker(object):
 class Radio(object):
     radio_client_class = RadioClient
 
-    def __init__(self, task_id, stream_url):
+    def __init__(self, task_id, stream_url, record_to):
         self.task_id = task_id
         self.stream_url = stream_url
-        self.writer = None
+        self.record_to = record_to
+        self.recorder = None
         self.meta = None
         self.manager = None
         self.air_id = -1
         self.last_touch = 0
         self.last_meta = 0
+        self.network_traffic = 0
+        self.record_from = 0
 
     def run(self):
         self.radio = self.radio_client_class(self.stream_url)
@@ -86,15 +93,16 @@ class Radio(object):
 
         while self.running:
             chunk, meta = self.radio.read()
+            self.network_traffic += len(chunk + meta)
 
             if self.track_meta(meta):
-                meta_changed, w = self.log_meta()
+                meta_changed, record = self.log_meta()
                 if meta_changed:
                     logging.info('meta (air_id %s): %s', self.air_id, self.meta)
-                self.writer_control(w)
+                self.setup_recorder(record)
 
-            if self.writer:
-                self.writer.write(chunk)
+            if self.recorder:
+                self.recorder.write(chunk)
 
             self.touch_task()
             gevent.sleep(0)
@@ -102,36 +110,45 @@ class Radio(object):
     def track_meta(self, meta):
         if meta and meta != self.meta:
             self.meta = unicode(meta, 'utf-8', 'ignore').strip()
-        elif self.last_meta <= time() - 10:
-            self.last_meta = time()
+        else:
             return True
 
-    def writer_control(self, w):
-        if w:
-            # create new writer if not exists or volume/name changed
-            if not self.writer or (w['volume'] != self.writer.volume or w['name'] != self.writer.name):
-                self.writer = StripeWriter(w['volume'], w['name'])
-        elif self.writer:
-            self.writer.close()
-            self.writer = None
+    def setup_recorder(self, record_info):
+        if record_info:
+            # create new recorder if not exists or name changed
+            if not self.recorder or record_info['name'] != self.recorder.name:
+                self.recorder = Recorder(self.record_to)
+                self.recorder.open(record_info['name'])
+                logging.info('task %s new stripe %s', self.task_id, self.recorder.path)
+                self.record_from = int(time())
+        elif self.recorder:
+            self.recorder.close()
+            self.recorder = None
 
     def log_meta(self):
         log = {
             'meta': self.meta,
             'pid': self.air_id,
             'ts': int(time()),
+            'record': {}
         }
+
+        if self.recorder:
+            log['record'] = self.get_record_info()
 
         #logging.info('log meta: %s', pretty_print(log))
         status = self.manager.task_log_meta(self.task_id, log)
+        if not status:
+            logging.info('stop task')
+            self.stop()
 
         # check air_id change
         pid = self.air_id
         self.air_id = status['air_id']
 
-        return self.air_id != pid, status.get('w')
+        return self.air_id != pid, status.get('record')
 
-    def touch_task(self, interval=5):
+    def touch_task(self, interval=1):
         # throttle calls
         if self.last_touch > time() - interval:
             return
@@ -139,57 +156,24 @@ class Radio(object):
 
         runtime = {
             'air_id': self.air_id,
-            'ts': int(time()),
+            'network_traffic': self.network_traffic
         }
 
-        if self.writer:
-            runtime['w'] = {
-                'offset': self.writer.offset,
-                'name': self.writer.name,
-                'volume': self.writer.volume
-            }
-            #logging.info('task touch: %s', pretty_print(runtime))
+        if self.recorder:
+            runtime['record'] = self.get_record_info()
 
         result = self.manager.task_touch(self.task_id, runtime)
         if not result:
             logging.info('stop task')
             self.stop()
 
+    def get_record_info(self):
+        return {
+            'from': self.record_from,
+            'size': self.recorder.size,
+            'name': self.recorder.name,
+        }
+
     def stop(self):
         self.running = False
         self.radio.close()
-
-
-if __name__ == '__main__':
-    from pprint import pprint as pp
-    from zlib import crc32
-
-    def fasthash(data):
-        return crc32(data) & 0xffffffff
-
-    class Manager(object):
-        def task_touch(self, task_id, runtime):
-            pp([task_id, runtime])
-            return {'code': 200}
-
-        def task_log_meta(self, task_id, update):
-            pp([task_id, update])
-            return {'air_id': 1010}
-
-    def get_task(url):
-        task = {
-            'task_id': fasthash(url),
-            'stream_url': url,
-            #'writer': {
-            #    'volume': '/tmp/recorder',
-            #    'stripe_size': 1024 * 1024
-            #}
-        }
-        return task
-
-    r = Radio(**get_task('http://fr2.ah.fm:9000/'))
-    r.manager = Manager()
-    r.run()
-
-    print 'exit'
-
