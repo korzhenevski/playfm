@@ -93,7 +93,9 @@ class Radio(object):
 
         while self.running:
             chunk, meta = self.radio.read()
-            self.network_traffic += len(chunk + meta)
+            self.network_traffic += len(chunk)
+            if meta:
+                self.network_traffic += len(meta)
 
             if self.track_meta(meta):
                 meta_changed, record = self.log_meta()
