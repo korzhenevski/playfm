@@ -16,6 +16,9 @@ def fasthash(data):
 
 def parse_stream_title(rawmeta):
     """ extract stream title from shoutcast meta """
+    if not rawmeta:
+        return
+
     try:
         # add chardet
         rawmeta = rawmeta.decode('utf8', 'ignore')
