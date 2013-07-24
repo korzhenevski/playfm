@@ -10,9 +10,8 @@ def get_ts():
 
 
 def fasthash(data):
-    data = unicode(data, 'utf-8', 'ignore')
     """ unsigned crc32 """
-    return unicode(crc32(data) & 0xffffffff)
+    return unicode(crc32(data.encode('utf-8', 'ignore')) & 0xffffffff)
 
 
 def parse_stream_title(rawmeta):
