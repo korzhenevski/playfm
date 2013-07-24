@@ -10,6 +10,7 @@ def get_ts():
 
 
 def fasthash(data):
+    data = unicode(data, 'utf-8', 'ignore')
     """ unsigned crc32 """
     return unicode(crc32(data) & 0xffffffff)
 
